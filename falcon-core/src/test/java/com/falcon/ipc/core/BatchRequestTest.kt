@@ -3,13 +3,17 @@ package com.falcon.ipc.core
 import com.falcon.ipc.monitor.MonitorFacade
 import com.falcon.ipc.monitor.MonitorLevel
 import com.falcon.ipc.protocol.IpcEnvelope
+import com.falcon.ipc.protocol.IpcSerializer
 import com.falcon.ipc.security.PermissionChecker
 import com.falcon.ipc.security.RateLimiter
 import com.falcon.ipc.service.IpcService
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
 
+@RunWith(RobolectricTestRunner::class)
 class BatchRequestTest {
 
     interface IMathService : IpcService {
@@ -44,12 +48,12 @@ class BatchRequestTest {
         batch.add(IpcEnvelope(
             serviceKey = IMathService::class.qualifiedName!!,
             method = "add",
-            args = "3,5".toByteArray()
+            args = IpcSerializer.serializeArgs(arrayOf(3, 5))
         ))
         batch.add(IpcEnvelope(
             serviceKey = IMathService::class.qualifiedName!!,
             method = "multiply",
-            args = "4,6".toByteArray()
+            args = IpcSerializer.serializeArgs(arrayOf(4, 6))
         ))
 
         val response = batchExecutor.execute(batch, "test")
@@ -64,7 +68,7 @@ class BatchRequestTest {
         batch.add(IpcEnvelope(
             serviceKey = IMathService::class.qualifiedName!!,
             method = "add",
-            args = "1,2".toByteArray()
+            args = IpcSerializer.serializeArgs(arrayOf(1, 2))
         ))
         batch.add(IpcEnvelope(
             serviceKey = "com.nonexistent.Service",
@@ -83,7 +87,7 @@ class BatchRequestTest {
         batch.add(IpcEnvelope(
             serviceKey = IMathService::class.qualifiedName!!,
             method = "add",
-            args = "1,1".toByteArray()
+            args = IpcSerializer.serializeArgs(arrayOf(1, 1))
         ))
 
         val response = batchExecutor.execute(batch, "test")

@@ -61,7 +61,7 @@ class IpcHostService : Service() {
             val callerProcess = ProcessUtils.getCurrentProcessName(this@IpcHostService)
             return try {
                 val result = messageRouter.handleLocal(request, callerProcess)
-                IpcEnvelope.response(request.requestId, result?.toString()?.toByteArray())
+                IpcEnvelope.response(request.requestId, com.falcon.ipc.protocol.IpcSerializer.serializeResult(result))
             } catch (e: SecurityException) {
                 IpcEnvelope.error(ErrorCode.PERMISSION_DENIED, e.message ?: "Denied", request.requestId)
             } catch (e: Exception) {

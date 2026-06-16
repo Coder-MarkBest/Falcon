@@ -1,6 +1,7 @@
 package com.falcon.ipc.core
 
 import com.falcon.ipc.protocol.IpcEnvelope
+import com.falcon.ipc.protocol.IpcSerializer
 import com.falcon.ipc.util.FalconLogger
 
 data class BatchRequest(
@@ -27,7 +28,7 @@ class BatchExecutor(
         val responses = batch.envelopes.map { envelope ->
             try {
                 val result = router.handleLocal(envelope, callerProcess)
-                IpcEnvelope.response(envelope.requestId, result?.toString()?.toByteArray())
+                IpcEnvelope.response(envelope.requestId, IpcSerializer.serializeResult(result))
             } catch (e: Exception) {
                 IpcEnvelope.error(-1, e.message ?: "Error", envelope.requestId)
             }

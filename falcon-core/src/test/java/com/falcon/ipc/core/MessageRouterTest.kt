@@ -3,6 +3,7 @@ package com.falcon.ipc.core
 import com.falcon.ipc.monitor.MonitorFacade
 import com.falcon.ipc.monitor.MonitorLevel
 import com.falcon.ipc.protocol.IpcEnvelope
+import com.falcon.ipc.protocol.IpcSerializer
 import com.falcon.ipc.security.AccessRule
 import com.falcon.ipc.security.PermissionChecker
 import com.falcon.ipc.security.RateLimiter
@@ -10,7 +11,10 @@ import com.falcon.ipc.service.IpcService
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
 
+@RunWith(RobolectricTestRunner::class)
 class MessageRouterTest {
 
     interface ICalcService : IpcService {
@@ -38,10 +42,11 @@ class MessageRouterTest {
 
     @Test
     fun `routes to local service`() {
+        val serializedArgs = IpcSerializer.serializeArgs(arrayOf(3, 5))
         val envelope = IpcEnvelope(
             serviceKey = ICalcService::class.qualifiedName!!,
             method = "add",
-            args = "3,5".toByteArray()
+            args = serializedArgs
         )
 
         val result = router.handleLocal(envelope, "com.test")
@@ -76,10 +81,11 @@ class MessageRouterTest {
             RateLimiter()
         )
 
+        val serializedArgs = IpcSerializer.serializeArgs(arrayOf(1, 2))
         val envelope = IpcEnvelope(
             serviceKey = ICalcService::class.qualifiedName!!,
             method = "add",
-            args = "1,2".toByteArray()
+            args = serializedArgs
         )
 
         try {

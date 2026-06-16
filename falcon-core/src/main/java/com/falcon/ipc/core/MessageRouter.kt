@@ -2,6 +2,7 @@ package com.falcon.ipc.core
 
 import com.falcon.ipc.monitor.MonitorFacade
 import com.falcon.ipc.protocol.IpcEnvelope
+import com.falcon.ipc.protocol.IpcSerializer
 import com.falcon.ipc.security.PermissionChecker
 import com.falcon.ipc.security.RateLimiter
 import com.falcon.ipc.util.FalconLogger
@@ -27,7 +28,10 @@ class MessageRouter(
         val startTime = System.currentTimeMillis()
 
         val result = try {
-            val args = deserializeArgs(envelope.args, method)
+            val args = IpcSerializer.deserializeArgs(
+                envelope.args ?: ByteArray(0),
+                method.parameterTypes
+            )
             method.isAccessible = true
             method.invoke(service, *args)
         } catch (e: Exception) {
@@ -45,28 +49,5 @@ class MessageRouter(
         return clazz.methods.firstOrNull { it.name == methodName }
             ?: clazz.interfaces.flatMap { it.methods.toList() }
                 .firstOrNull { it.name == methodName }
-    }
-
-    private fun deserializeArgs(data: ByteArray?, method: Method): Array<Any?> {
-        if (data == null || data.isEmpty()) return emptyArray()
-
-        val params = method.parameterTypes
-        val parts = String(data).split(",")
-
-        return params.mapIndexed { index, type ->
-            if (index < parts.size) convertArg(parts[index].trim(), type) else null
-        }.toTypedArray()
-    }
-
-    private fun convertArg(value: String, type: Class<*>): Any? {
-        return when (type) {
-            Int::class.java, Integer::class.java -> value.toInt()
-            Long::class.java, java.lang.Long::class.java -> value.toLong()
-            Float::class.java, java.lang.Float::class.java -> value.toFloat()
-            Double::class.java, java.lang.Double::class.java -> value.toDouble()
-            Boolean::class.java, java.lang.Boolean::class.java -> value.toBoolean()
-            String::class.java -> value
-            else -> value
-        }
     }
 }

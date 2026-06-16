@@ -4,16 +4,16 @@ import com.falcon.ipc.core.*
 import com.falcon.ipc.monitor.MonitorFacade
 import com.falcon.ipc.monitor.MonitorLevel
 import com.falcon.ipc.protocol.IpcEnvelope
+import com.falcon.ipc.protocol.IpcSerializer
 import com.falcon.ipc.security.PermissionChecker
 import com.falcon.ipc.security.RateLimiter
 import com.falcon.ipc.service.IpcService
 import org.junit.Assert.*
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
 
-/**
- * Integration test simulating two services in the same process.
- * Real cross-process tests require instrumented tests with Android emulator.
- */
+@RunWith(RobolectricTestRunner::class)
 class IntegrationTestSetup {
 
     interface INavService : IpcService {
@@ -114,7 +114,7 @@ class IntegrationTestSetup {
 
         val batch = BatchRequest()
         batch.add(IpcEnvelope(serviceKey = INavService::class.qualifiedName!!, method = "getLocation"))
-        batch.add(IpcEnvelope(serviceKey = INavService::class.qualifiedName!!, method = "calculateRoute", args = "airport".toByteArray()))
+        batch.add(IpcEnvelope(serviceKey = INavService::class.qualifiedName!!, method = "calculateRoute", args = IpcSerializer.serializeArgs(arrayOf("airport"))))
 
         val response = batchExecutor.execute(batch, "test")
         assertEquals(2, response.responses.size)

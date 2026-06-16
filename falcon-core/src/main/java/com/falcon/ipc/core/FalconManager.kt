@@ -7,6 +7,7 @@ import com.falcon.ipc.monitor.MonitorFacade
 import com.falcon.ipc.security.PermissionChecker
 import com.falcon.ipc.security.RateLimiter
 import com.falcon.ipc.security.SignatureGuard
+import com.falcon.ipc.protocol.IpcEnvelope
 import com.falcon.ipc.service.IpcService
 import com.falcon.ipc.transport.SharedMemoryTransport
 import com.falcon.ipc.util.FalconLogger
@@ -50,8 +51,35 @@ class FalconManager internal constructor(
     @Suppress("UNCHECKED_CAST")
     fun <T : IpcService> getService(serviceClass: KClass<T>): T? {
         val key = serviceClass.qualifiedName ?: return null
+
+        // 1. Check local registry first
         val local = serviceRegistry.getService(key)
         if (local != null) return local as T
+
+        // 2. Search remote peers
+        val peers = peerManager?.getAllConnections() ?: return null
+        for ((_, peer) in peers) {
+            // Check if this peer has the service
+            try {
+                val checkEnvelope = IpcEnvelope(
+                    serviceKey = "",
+                    method = "__check_service__",
+                    args = key.toByteArray()
+                )
+                peer.transport.invoke(checkEnvelope)
+                // If we got here, create a proxy
+                return ProxyFactory.create(serviceClass.java, key, peer.transport)
+            } catch (e: Exception) {
+                continue
+            }
+        }
+
+        // 3. Try creating proxy for first available peer (optimistic)
+        val firstPeer = peers.values.firstOrNull()
+        if (firstPeer != null) {
+            return ProxyFactory.create(serviceClass.java, key, firstPeer.transport)
+        }
+
         return null
     }
 
