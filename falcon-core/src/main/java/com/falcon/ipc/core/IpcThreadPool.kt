@@ -1,70 +1,47 @@
 package com.falcon.ipc.core
 
 import com.falcon.ipc.util.FalconLogger
-import kotlinx.coroutines.*
-import java.util.concurrent.*
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.asCoroutineDispatcher
+import java.util.concurrent.Callable
+import java.util.concurrent.Future
+import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.ThreadFactory
+import java.util.concurrent.ThreadPoolExecutor
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
-
-enum class IpcPriority {
-    SAFETY,       // Highest: airbag, brake, steering
-    NAVIGATION,   // Medium-high: GPS, route
-    MEDIA,        // Medium: audio, video
-    DIAGNOSTIC    // Lowest: logging, telemetry
-}
 
 data class ThreadPoolConfig(
     val corePoolSize: Int = 4,
     val maxPoolSize: Int = 8,
-    val keepAliveMs: Long = 60_000,
-    val priorityQueue: Boolean = false
+    val keepAliveMs: Long = 60_000
 )
 
 class IpcThreadPool(
     private val config: ThreadPoolConfig = ThreadPoolConfig()
 ) {
-    private val priorityCounter = AtomicInteger(0)
+    private val threadCounter = AtomicInteger(0)
 
     private val executor: ThreadPoolExecutor by lazy {
-        val queue: BlockingQueue<Runnable> = if (config.priorityQueue) {
-            PriorityBlockingQueue(100, Comparator { a, b ->
-                val pa = (a as? PriorityRunnable)?.priority?.ordinal ?: IpcPriority.DIAGNOSTIC.ordinal
-                val pb = (b as? PriorityRunnable)?.priority?.ordinal ?: IpcPriority.DIAGNOSTIC.ordinal
-                pa.compareTo(pb)
-            })
-        } else {
-            LinkedBlockingQueue()
-        }
-
         ThreadPoolExecutor(
             config.corePoolSize,
             config.maxPoolSize,
             config.keepAliveMs,
             TimeUnit.MILLISECONDS,
-            queue,
+            LinkedBlockingQueue(),
             ThreadFactory { r ->
-                Thread(r, "falcon-io-${priorityCounter.incrementAndGet()}").apply {
-                    isDaemon = true
-                }
+                Thread(r, "falcon-io-${threadCounter.incrementAndGet()}").apply { isDaemon = true }
             }
         )
     }
 
-    val dispatcher: CoroutineDispatcher by lazy {
-        executor.asCoroutineDispatcher()
+    val dispatcher: CoroutineDispatcher by lazy { executor.asCoroutineDispatcher() }
+
+    fun submit(block: () -> Unit) {
+        executor.execute(block)
     }
 
-    fun submit(priority: IpcPriority = IpcPriority.DIAGNOSTIC, block: () -> Unit) {
-        val runnable = if (config.priorityQueue) {
-            PriorityRunnable(priority, block)
-        } else {
-            Runnable { block() }
-        }
-        executor.execute(runnable)
-    }
-
-    fun <T> submitCallable(priority: IpcPriority = IpcPriority.DIAGNOSTIC, block: () -> T): Future<T> {
-        return executor.submit(Callable { block() })
-    }
+    fun <T> submitCallable(block: () -> T): Future<T> = executor.submit(Callable { block() })
 
     fun getActiveCount(): Int = executor.activeCount
     fun getPoolSize(): Int = executor.poolSize
@@ -77,12 +54,5 @@ class IpcThreadPool(
             executor.shutdownNow()
         }
         FalconLogger.d("ThreadPool", "Shutdown complete")
-    }
-
-    private class PriorityRunnable(
-        val priority: IpcPriority,
-        private val block: () -> Unit
-    ) : Runnable {
-        override fun run() = block()
     }
 }
