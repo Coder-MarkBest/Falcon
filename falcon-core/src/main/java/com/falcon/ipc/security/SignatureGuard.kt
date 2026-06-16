@@ -13,6 +13,12 @@ class SignatureGuard {
     private var selfUid: Int = -1
     private val verifiedUids = java.util.concurrent.ConcurrentHashMap<Int, Boolean>()
 
+    companion object {
+        /** True iff every caller package signature is in the trusted set (and there is at least one). */
+        fun isTrusted(callerSignatureHashes: Set<String>, trusted: Set<String>): Boolean =
+            callerSignatureHashes.isNotEmpty() && trusted.containsAll(callerSignatureHashes)
+    }
+
     fun init(context: Context) {
         selfUid = Process.myUid()
         selfSignatureHash = computeSignatureHash(context, context.packageName)
