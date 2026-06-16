@@ -4,7 +4,7 @@ import android.util.Log
 
 object FalconLogger {
     private const val TAG_PREFIX = "Falcon:"
-    var enabled: Boolean = false
+    @Volatile var enabled: Boolean = false
 
     fun d(module: String, message: String) {
         if (enabled) Log.d("$TAG_PREFIX$module", message)

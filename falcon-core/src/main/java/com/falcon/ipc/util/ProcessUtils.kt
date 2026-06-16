@@ -13,9 +13,7 @@ object ProcessUtils {
 
         val pid = Process.myPid()
         val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-        val name = am.runningAppProcesses
-            .firstOrNull { it.pid == pid }
-            ?.processName
+        val name = am.runningAppProcesses?.firstOrNull { it.pid == pid }?.processName
             ?: context.packageName
 
         cachedProcessName = name

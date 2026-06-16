@@ -41,16 +41,18 @@ class CircuitBreaker(
             CircuitState.CLOSED -> true
 
             CircuitState.OPEN -> {
-                val elapsed = System.currentTimeMillis() - circuit.lastFailureTime.get()
-                if (elapsed >= config.openDurationMs) {
-                    // Transition to HALF_OPEN
-                    circuit.state = CircuitState.HALF_OPEN
-                    circuit.halfOpenCalls.set(0)
-                    FalconLogger.d("Circuit", "HALF_OPEN: $serviceKey")
-                    true
-                } else {
-                    FalconLogger.w("Circuit", "OPEN (rejecting): $serviceKey")
-                    false
+                synchronized(circuit) {
+                    if (circuit.state != CircuitState.OPEN) return@synchronized false
+                    val elapsed = System.currentTimeMillis() - circuit.lastFailureTime.get()
+                    if (elapsed >= config.openDurationMs) {
+                        circuit.state = CircuitState.HALF_OPEN
+                        circuit.halfOpenCalls.set(0)
+                        FalconLogger.d("Circuit", "HALF_OPEN: $serviceKey")
+                        true
+                    } else {
+                        FalconLogger.w("Circuit", "OPEN (rejecting): $serviceKey")
+                        false
+                    }
                 }
             }
 

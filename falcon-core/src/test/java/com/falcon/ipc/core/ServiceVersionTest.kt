@@ -20,11 +20,9 @@ class ServiceVersionTest {
         assertEquals(3, v.minor)
     }
 
-    @Test
-    fun `parse invalid version returns default`() {
-        val v = ServiceVersion.parse("invalid")
-        assertEquals(1, v.major)
-        assertEquals(0, v.minor)
+    @Test(expected = IllegalArgumentException::class)
+    fun `parse invalid version throws`() {
+        ServiceVersion.parse("invalid")
     }
 
     @Test

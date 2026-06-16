@@ -11,6 +11,7 @@ import java.util.concurrent.ConcurrentHashMap
 data class MonitorConfig(
     var enableCallStats: Boolean = false,
     var enableTracing: Boolean = false,
+    var enableLatencyHistogram: Boolean = false,
     var statsWindowSeconds: Int = 60
 )
 
@@ -28,8 +29,8 @@ class MonitorFacade {
         config = when (level) {
             MonitorLevel.NONE -> MonitorConfig(enableCallStats = false, enableTracing = false)
             MonitorLevel.BASIC -> MonitorConfig(enableCallStats = true, enableTracing = false)
-            MonitorLevel.DETAILED -> MonitorConfig(enableCallStats = true, enableTracing = false)
-            MonitorLevel.FULL -> MonitorConfig(enableCallStats = true, enableTracing = true)
+            MonitorLevel.DETAILED -> MonitorConfig(enableCallStats = true, enableLatencyHistogram = true)
+            MonitorLevel.FULL -> MonitorConfig(enableCallStats = true, enableTracing = true, enableLatencyHistogram = true)
         }
     }
 

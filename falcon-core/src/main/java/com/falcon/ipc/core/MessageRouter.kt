@@ -34,7 +34,12 @@ class MessageRouter(
         val service = registry.getService(envelope.serviceKey)
             ?: throw IllegalStateException("Service not found: ${envelope.serviceKey}")
 
-        val method = findMethod(service.javaClass, envelope.method)
+        val deserializedArgs = IpcSerializer.deserializeArgs(
+            envelope.args ?: ByteArray(0),
+            emptyArray()
+        )
+
+        val method = findMethod(service.javaClass, envelope.method, deserializedArgs.size)
             ?: throw IllegalStateException("Method not found: ${envelope.method}")
 
         val startTime = System.currentTimeMillis()
@@ -59,9 +64,19 @@ class MessageRouter(
         return result
     }
 
-    private fun findMethod(clazz: Class<*>, methodName: String): Method? {
-        return clazz.methods.firstOrNull { it.name == methodName }
+    private fun findMethod(clazz: Class<*>, methodName: String, argCount: Int): Method? {
+        return clazz.methods.filter { it.name == methodName }
+            .let { candidates ->
+                if (candidates.size == 1) candidates.first()
+                else candidates.firstOrNull { it.parameterCount == argCount }
+                    ?: candidates.firstOrNull()
+            }
             ?: clazz.interfaces.flatMap { it.methods.toList() }
-                .firstOrNull { it.name == methodName }
+                .filter { it.name == methodName }
+                .let { candidates ->
+                    if (candidates.size == 1) candidates.first()
+                    else candidates.firstOrNull { it.parameterCount == argCount }
+                        ?: candidates.firstOrNull()
+                }
     }
 }

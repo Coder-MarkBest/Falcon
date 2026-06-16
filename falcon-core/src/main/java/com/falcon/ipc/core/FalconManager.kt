@@ -2,6 +2,7 @@ package com.falcon.ipc.core
 
 import android.content.Context
 import android.net.Uri
+import com.falcon.ipc.Falcon
 import com.falcon.ipc.FalconConfig
 import com.falcon.ipc.monitor.MonitorFacade
 import com.falcon.ipc.security.PermissionChecker
@@ -20,6 +21,10 @@ class FalconManager internal constructor(
 ) {
     val serviceRegistry = ServiceRegistry()
     val monitor = MonitorFacade().apply { setLevel(config.monitorLevel) }
+    val circuitBreaker = CircuitBreaker()
+    val versionRegistry = ServiceVersionRegistry()
+    val otaCompat = OtaCompatManager()
+    val diagnostics = DiagnosticsManager()
     private val signatureGuard = SignatureGuard().apply { init(context) }
     private val permissionChecker = PermissionChecker(config.security.accessRules)
     private val rateLimiter = RateLimiter(
@@ -93,5 +98,14 @@ class FalconManager internal constructor(
         sharedMemoryTransport.releaseAll()
         serviceRegistry.unregisterAll()
         FalconLogger.d("Falcon", "Stopped")
+    }
+
+    fun shutdown(timeoutMs: Long = 5000L) {
+        FalconLogger.d("Falcon", "Shutting down (timeout=${timeoutMs}ms)...")
+        peerManager?.stop()
+        sharedMemoryTransport.releaseAll()
+        serviceRegistry.unregisterAll()
+        Falcon.instance = null
+        FalconLogger.d("Falcon", "Shutdown complete")
     }
 }

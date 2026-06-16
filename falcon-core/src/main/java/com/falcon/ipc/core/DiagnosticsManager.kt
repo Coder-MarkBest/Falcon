@@ -23,7 +23,7 @@ class DiagnosticsManager {
     private val entries = ConcurrentLinkedQueue<DiagnosticEntry>()
     private val maxEntries = 10_000
     private val entryCount = AtomicLong(0)
-    private var dumpDir: File? = null
+    @Volatile private var dumpDir: File? = null
 
     fun enable(dumpDirectory: File? = null) {
         enabled.set(true)

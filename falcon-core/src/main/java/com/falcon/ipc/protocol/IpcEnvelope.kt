@@ -67,8 +67,22 @@ data class IpcEnvelope(
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (other !is IpcEnvelope) return false
-        return requestId == other.requestId
+        return serviceKey == other.serviceKey &&
+            method == other.method &&
+            args.contentEquals(other.args) &&
+            requestId == other.requestId &&
+            timestamp == other.timestamp &&
+            traceId == other.traceId &&
+            isError == other.isError &&
+            errorCode == other.errorCode &&
+            errorMessage == other.errorMessage
     }
 
-    override fun hashCode(): Int = requestId.hashCode()
+    override fun hashCode(): Int {
+        var result = serviceKey.hashCode()
+        result = 31 * result + method.hashCode()
+        result = 31 * result + (args?.contentHashCode() ?: 0)
+        result = 31 * result + requestId.hashCode()
+        return result
+    }
 }

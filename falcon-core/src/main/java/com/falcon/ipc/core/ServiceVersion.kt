@@ -18,11 +18,12 @@ data class ServiceVersion(
         val DEFAULT = ServiceVersion(1, 0)
 
         fun parse(versionStr: String): ServiceVersion {
+            require(versionStr.isNotBlank()) { "Version string must not be blank" }
             val parts = versionStr.split(".")
-            return ServiceVersion(
-                parts.getOrNull(0)?.toIntOrNull() ?: 1,
-                parts.getOrNull(1)?.toIntOrNull() ?: 0
-            )
+            val major = parts.getOrNull(0)?.toIntOrNull()
+                ?: throw IllegalArgumentException("Invalid major version: ${versionStr}")
+            val minor = parts.getOrNull(1)?.toIntOrNull() ?: 0
+            return ServiceVersion(major, minor)
         }
     }
 }

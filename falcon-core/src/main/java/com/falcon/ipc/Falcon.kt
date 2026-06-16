@@ -8,7 +8,7 @@ import kotlin.reflect.KClass
 object Falcon {
 
     @Volatile
-    private var instance: FalconManager? = null
+    internal var instance: FalconManager? = null
 
     fun init(context: Context, block: FalconConfig.() -> Unit = {}): FalconManager {
         return instance ?: synchronized(this) {

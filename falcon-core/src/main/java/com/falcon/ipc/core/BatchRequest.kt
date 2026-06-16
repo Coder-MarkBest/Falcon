@@ -4,14 +4,14 @@ import com.falcon.ipc.protocol.IpcEnvelope
 import com.falcon.ipc.protocol.IpcSerializer
 import com.falcon.ipc.util.FalconLogger
 
-data class BatchRequest(
-    val envelopes: MutableList<IpcEnvelope> = mutableListOf()
-) {
-    fun add(envelope: IpcEnvelope) {
-        envelopes.add(envelope)
-    }
+class BatchRequest {
+    private val _envelopes = mutableListOf<IpcEnvelope>()
+    val envelopes: List<IpcEnvelope> get() = _envelopes.toList()
+    val size: Int get() = _envelopes.size
 
-    val size: Int get() = envelopes.size
+    fun add(envelope: IpcEnvelope) {
+        _envelopes.add(envelope)
+    }
 }
 
 data class BatchResponse(

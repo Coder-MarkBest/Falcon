@@ -9,14 +9,17 @@ import kotlin.reflect.KProperty
 
 class IpcServiceDelegate<T : IpcService>(
     private val serviceClass: KClass<T>,
-    private val fallback: T? = null
+    private val fallback: T? = null,
+    private val cacheTtlMs: Long = 60_000L
 ) : ReadOnlyProperty<Any, T> {
 
-    @Volatile
-    private var cached: T? = null
+    @Volatile private var cached: T? = null
+    @Volatile private var cachedAt: Long = 0L
 
     override fun getValue(thisRef: Any, property: KProperty<*>): T {
-        cached?.let { return it }
+        val now = System.currentTimeMillis()
+        val current = cached
+        if (current != null && (now - cachedAt) < cacheTtlMs) return current
 
         val manager = try {
             Falcon.getInstance()
@@ -27,6 +30,7 @@ class IpcServiceDelegate<T : IpcService>(
         val service = manager.getService(serviceClass)
         if (service != null) {
             cached = service
+            cachedAt = now
             return service
         }
 
