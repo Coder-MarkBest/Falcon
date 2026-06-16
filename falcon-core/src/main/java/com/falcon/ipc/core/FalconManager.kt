@@ -97,7 +97,6 @@ class FalconManager internal constructor(
 
     fun stop() {
         peerManager?.stop()
-        sharedMemoryTransport.releaseAll()
         serviceRegistry.unregisterAll()
         FalconLogger.d("Falcon", "Stopped")
     }
@@ -105,7 +104,6 @@ class FalconManager internal constructor(
     fun shutdown(timeoutMs: Long = 5000L) {
         FalconLogger.d("Falcon", "Shutting down (timeout=${timeoutMs}ms)...")
         peerManager?.stop()
-        sharedMemoryTransport.releaseAll()
         serviceRegistry.unregisterAll()
         Falcon.instance = null
         FalconLogger.d("Falcon", "Shutdown complete")
