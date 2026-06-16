@@ -7,20 +7,18 @@ import android.os.IBinder
 import com.falcon.ipc.Falcon
 import com.falcon.ipc.aidl.IIpcEventCallback
 import com.falcon.ipc.aidl.IIpcHost
-import com.falcon.ipc.monitor.MonitorFacade
 import com.falcon.ipc.protocol.ErrorCode
 import com.falcon.ipc.protocol.IpcEnvelope
-import com.falcon.ipc.security.PermissionChecker
-import com.falcon.ipc.security.RateLimiter
 import com.falcon.ipc.security.SignatureGuard
+import com.falcon.ipc.util.CallerResolver
 import com.falcon.ipc.util.FalconLogger
-import com.falcon.ipc.util.ProcessUtils
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 
 class IpcHostService : Service() {
 
     private lateinit var signatureGuard: SignatureGuard
+    private lateinit var callerResolver: CallerResolver
     private lateinit var serviceRegistry: ServiceRegistry
     private lateinit var messageRouter: MessageRouter
     private val eventSubscribers = ConcurrentHashMap<String, CopyOnWriteArrayList<IIpcEventCallback>>()
@@ -35,7 +33,8 @@ class IpcHostService : Service() {
             return
         }
         serviceRegistry = falconManager.serviceRegistry
-        signatureGuard = SignatureGuard().apply { init(this@IpcHostService) }
+        signatureGuard = falconManager.signatureGuard
+        callerResolver = falconManager.callerResolver
         messageRouter = falconManager.messageRouter
     }
 
@@ -51,17 +50,20 @@ class IpcHostService : Service() {
     private val hostBinder = object : IIpcHost.Stub() {
 
         override fun invoke(request: IpcEnvelope): IpcEnvelope {
-            if (!signatureGuard.verify(this@IpcHostService, Binder.getCallingUid())) {
+            val callingUid = Binder.getCallingUid()
+            val callingPid = Binder.getCallingPid()
+            if (!signatureGuard.verify(this@IpcHostService, callingUid)) {
                 return IpcEnvelope.error(ErrorCode.UNAUTHORIZED, "Signature mismatch")
             }
-
-            val callerProcess = ProcessUtils.getCurrentProcessName(this@IpcHostService)
-            val callerPid = Binder.getCallingPid()
+            val callerProcess = callerResolver.resolve(callingPid)
             return try {
-                val result = messageRouter.handleLocal(request, callerProcess, callerPid)
-                IpcEnvelope.response(request.requestId, com.falcon.ipc.protocol.IpcSerializer.serializeResult(result))
+                val result = messageRouter.handleLocal(request, callerProcess, callingPid)
+                IpcEnvelope.response(request.requestId,
+                    com.falcon.ipc.protocol.IpcSerializer.serializeResult(result))
             } catch (e: SecurityException) {
                 IpcEnvelope.error(ErrorCode.PERMISSION_DENIED, e.message ?: "Denied", request.requestId)
+            } catch (e: IllegalStateException) {
+                IpcEnvelope.error(ErrorCode.RATE_LIMITED, e.message ?: "Rate limited", request.requestId)
             } catch (e: Exception) {
                 IpcEnvelope.error(ErrorCode.UNKNOWN, e.message ?: "Error", request.requestId)
             }

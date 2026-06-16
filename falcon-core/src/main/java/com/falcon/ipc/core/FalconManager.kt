@@ -11,6 +11,7 @@ import com.falcon.ipc.security.SignatureGuard
 import com.falcon.ipc.protocol.IpcEnvelope
 import com.falcon.ipc.service.IpcService
 import com.falcon.ipc.transport.SharedMemoryTransport
+import com.falcon.ipc.util.CallerResolver
 import com.falcon.ipc.util.FalconLogger
 import com.falcon.ipc.util.ProcessUtils
 import kotlin.reflect.KClass
@@ -25,7 +26,8 @@ class FalconManager internal constructor(
     val versionRegistry = ServiceVersionRegistry()
     val otaCompat = OtaCompatManager()
     val diagnostics = DiagnosticsManager()
-    private val signatureGuard = SignatureGuard().apply { init(context) }
+    internal val signatureGuard = SignatureGuard().apply { init(context) }
+    internal val callerResolver = CallerResolver(context)
     private val permissionChecker = PermissionChecker(config.security.accessRules)
     private val rateLimiter = RateLimiter(
         config.security.rateLimitPerSecond,
