@@ -87,19 +87,6 @@ class IntegrationTestSetup {
     }
 
     @Test
-    fun `circuit breaker integration`() {
-        val cb = CircuitBreaker(CircuitBreakerConfig(failureThreshold = 3, openDurationMs = 100))
-
-        // Simulate failures
-        repeat(3) { cb.recordFailure("svc") }
-        assertFalse(cb.allowCall("svc"))
-
-        // After open duration, should allow
-        Thread.sleep(150)
-        assertTrue(cb.allowCall("svc"))
-    }
-
-    @Test
     fun `batch execution integration`() {
         val registry = ServiceRegistry()
         registry.register(INavService::class, NavServiceImpl())

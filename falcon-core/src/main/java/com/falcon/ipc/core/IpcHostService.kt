@@ -3,7 +3,6 @@ package com.falcon.ipc.core
 import android.app.Service
 import android.content.Intent
 import android.os.Binder
-import android.os.Build
 import android.os.IBinder
 import com.falcon.ipc.Falcon
 import com.falcon.ipc.aidl.IIpcEventCallback
@@ -12,8 +11,6 @@ import com.falcon.ipc.protocol.ErrorCode
 import com.falcon.ipc.protocol.IpcEnvelope
 import com.falcon.ipc.protocol.IpcSerializer
 import com.falcon.ipc.security.SignatureGuard
-import com.falcon.ipc.transport.SharedMemoryTransport
-import com.falcon.ipc.transport.TransportSelector
 import com.falcon.ipc.util.CallerResolver
 import com.falcon.ipc.util.FalconLogger
 import java.util.concurrent.ConcurrentHashMap
@@ -25,8 +22,6 @@ class IpcHostService : Service() {
     private lateinit var callerResolver: CallerResolver
     private lateinit var serviceRegistry: ServiceRegistry
     private lateinit var messageRouter: MessageRouter
-    private var sharedMemoryTransport: SharedMemoryTransport? = null
-    private var threshold: Int = 64 * 1024
     private val eventSubscribers = ConcurrentHashMap<String, CopyOnWriteArrayList<IIpcEventCallback>>()
 
     override fun onCreate() {
@@ -42,8 +37,6 @@ class IpcHostService : Service() {
         signatureGuard = falconManager.signatureGuard
         callerResolver = falconManager.callerResolver
         messageRouter = falconManager.messageRouter
-        sharedMemoryTransport = falconManager.sharedMemoryTransport
-        threshold = falconManager.sharedMemoryThreshold
     }
 
     // getCallingUid() in onBind is best-effort early rejection; the authoritative
@@ -69,19 +62,7 @@ class IpcHostService : Service() {
             val callerProcess = callerResolver.resolve(callingPid)
             return try {
                 val result = messageRouter.handleLocal(request, callerProcess, callingPid)
-                val resultBytes = IpcSerializer.serializeResult(result)
-                // NOTE: the sender's SharedMemory copy for the RESPONSE cannot be closed here —
-                // the AIDL stub marshals the returned envelope after this method returns, so the
-                // FD must stay open until then. It is reclaimed by SharedMemory's GC Cleaner.
-                val response = if (TransportSelector.shouldUseSharedMemory(resultBytes.size, threshold)
-                    && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-                    val shm = sharedMemoryTransport?.writeToShared(resultBytes)
-                    if (shm != null) IpcEnvelope(requestId = request.requestId, largePayload = true, sharedMemory = shm)
-                    else IpcEnvelope.response(request.requestId, resultBytes)
-                } else {
-                    IpcEnvelope.response(request.requestId, resultBytes)
-                }
-                response
+                IpcEnvelope.response(request.requestId, IpcSerializer.serializeResult(result))
             } catch (e: SecurityException) {
                 IpcEnvelope.error(ErrorCode.PERMISSION_DENIED, e.message ?: "Denied", request.requestId)
             } catch (e: IllegalStateException) {

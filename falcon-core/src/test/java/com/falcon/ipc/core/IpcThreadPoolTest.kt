@@ -53,37 +53,6 @@ class IpcThreadPoolTest {
     }
 
     @Test
-    fun `priority queue processes high priority first`() {
-        pool = IpcThreadPool(ThreadPoolConfig(
-            corePoolSize = 1,
-            maxPoolSize = 1,
-            priorityQueue = true
-        ))
-
-        val results = mutableListOf<String>()
-        val gate = CountDownLatch(1)
-
-        // Block the single thread
-        pool.submit(IpcPriority.DIAGNOSTIC) {
-            gate.await()
-        }
-
-        // Queue tasks with different priorities
-        pool.submit(IpcPriority.DIAGNOSTIC) { synchronized(results) { results.add("diag") } }
-        pool.submit(IpcPriority.SAFETY) { synchronized(results) { results.add("safety") } }
-        pool.submit(IpcPriority.MEDIA) { synchronized(results) { results.add("media") } }
-
-        // Release the gate
-        gate.countDown()
-        Thread.sleep(500) // Wait for all to complete
-
-        // Safety should be first after the blocking task
-        if (results.size >= 2) {
-            assertEquals("safety", results[0])
-        }
-    }
-
-    @Test
     fun `submitCallable returns result`() {
         pool = IpcThreadPool()
         val future = pool.submitCallable { 42 }

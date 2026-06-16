@@ -12,7 +12,6 @@ import com.falcon.ipc.protocol.IpcEnvelope
 import com.falcon.ipc.protocol.IpcSerializer
 import com.falcon.ipc.service.IpcService
 import com.falcon.ipc.transport.TransportResult
-import com.falcon.ipc.transport.SharedMemoryTransport
 import com.falcon.ipc.util.CallerResolver
 import com.falcon.ipc.util.FalconLogger
 import com.falcon.ipc.util.ProcessUtils
@@ -24,9 +23,6 @@ class FalconManager internal constructor(
 ) {
     val serviceRegistry = ServiceRegistry()
     val monitor = MonitorFacade().apply { setLevel(config.monitorLevel) }
-    val circuitBreaker = CircuitBreaker()
-    val versionRegistry = ServiceVersionRegistry()
-    val otaCompat = OtaCompatManager()
     val diagnostics = DiagnosticsManager()
     internal val signatureGuard = SignatureGuard().apply { init(context) }
     internal val callerResolver = CallerResolver(context)
@@ -35,14 +31,8 @@ class FalconManager internal constructor(
         config.security.rateLimitPerSecond,
         config.security.maxConcurrentCalls
     )
-    internal val sharedMemoryTransport: SharedMemoryTransport? =
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O_MR1)
-            SharedMemoryTransport(config.transport.maxSharedMemorySize)
-        else null
-    internal val sharedMemoryThreshold: Int get() = config.transport.sharedMemoryThreshold
     internal val messageRouter = MessageRouter(
-        serviceRegistry, monitor, permissionChecker, rateLimiter,
-        sharedMemoryTransport = sharedMemoryTransport
+        serviceRegistry, monitor, permissionChecker, rateLimiter
     )
 
     private val registryUri = Uri.parse(
@@ -58,8 +48,7 @@ class FalconManager internal constructor(
         messageRouter.setInterceptors(config.interceptors)
         peerManager = PeerManager(
             context, registryUri,
-            threadPool = threadPool,
-            sharedMemoryTransport = sharedMemoryTransport
+            threadPool = threadPool
         ).also { it.start() }
         FalconLogger.d("Falcon", "Started in ${ProcessUtils.getCurrentProcessName(context)}")
     }
@@ -93,8 +82,7 @@ class FalconManager internal constructor(
                         IpcSerializer.deserializeResult(data, Boolean::class.javaObjectType) == true
                     } else false
                     if (hasService) {
-                        return ProxyFactory.create(serviceClass.java, key, peer.transport,
-                            sharedMemoryTransport = sharedMemoryTransport, threshold = sharedMemoryThreshold)
+                        return ProxyFactory.create(serviceClass.java, key, peer.transport)
                     }
                 }
             } catch (e: Exception) {

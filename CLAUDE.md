@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project: Falcon IPC Framework
 
-Android 车载系统跨进程通信(IPC)框架，基于 Binder + SharedMemory 混合架构，KSP 编译期代码生成。
+Android 车载系统跨进程通信(IPC)框架，基于 Binder + KSP 编译期代码生成。
 
 ## Build Commands
 
@@ -42,15 +42,14 @@ falcon-ksp (KSP processor — generates Stub/Proxy from annotated interfaces)
 falcon-benchmark (Android app — compares Falcon vs AIDL vs Messenger vs ContentProvider)
 ```
 
-### Core design: Binder + SharedMemory hybrid transport
-- **< 64KB** data → Binder direct transfer (kernel-level, lowest latency)
-- **≥ 64KB** data → SharedMemory zero-copy (the `SharedMemory` is Parcelable and travels inside `IpcEnvelope`; the kernel dups the FD to the receiver — no token/registry indirection)
-- Transport is selected by payload size via `TransportSelector.shouldUseSharedMemory`, applied on both request (ProxyFactory) and response (IpcHostService) paths
+### Core design: Binder transport
+- All calls go over Binder (`IIpcHost.invoke(IpcEnvelope)`); payloads are kept under the ~1MB Binder transaction limit (no large-payload use case in scope)
+- The SharedMemory hybrid path was removed (see `docs/superpowers/specs/2026-06-17-overengineering-audit.md`) — it was unused dead weight given no high-frequency large payloads
 
 ### Key packages in falcon-core
 - `com.falcon.ipc` — Falcon entry point, FalconConfig DSL
 - `com.falcon.ipc.core` — FalconManager, ServiceRegistry, PeerManager, MessageRouter, IpcHostService, IpcRegistryProvider
-- `com.falcon.ipc.transport` — BinderTransport, SharedMemoryTransport, IpcTransport interface
+- `com.falcon.ipc.transport` — BinderTransport, IpcTransport interface
 - `com.falcon.ipc.protocol` — IpcEnvelope (Parcelable message), IpcResult (sealed class), ErrorCode
 - `com.falcon.ipc.security` — SignatureGuard (mandatory signature check), PermissionChecker (allow/deny lists), RateLimiter
 - `com.falcon.ipc.monitor` — MonitorFacade (stats OFF by default), IpcInterceptor, IpcCallStats, MonitorLevel
@@ -62,9 +61,8 @@ falcon-benchmark (Android app — compares Falcon vs AIDL vs Messenger vs Conten
 - Exponential backoff reconnection (500ms → 30s max)
 
 ### Security model
-- Signature verification: mandatory, cannot be disabled
+- Signature verification: enforced on bind/invoke (NOTE: currently same-signature-only — see audit; needs a trusted-signature allowlist to support third-party callers)
 - Permission control: @IpcPermission annotation + DSL access rules
-- SharedMemory: secured by kernel FD passing (dup'd per Binder transaction) + the mandatory signature check on bind/invoke
 - Rate limiting: per-PID sliding window, enforced in MessageRouter on every call
 
 ## Annotations (falcon-annotations)
