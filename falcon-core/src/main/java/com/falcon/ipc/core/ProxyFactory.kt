@@ -87,10 +87,12 @@ object ProxyFactory {
             method: Method
         ): Any? {
             val serializedArgs = IpcSerializer.serializeArgs(args)
+            var requestShm: android.os.SharedMemory? = null
             val envelope = if (sharedMemoryTransport != null
                 && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1
                 && TransportSelector.shouldUseSharedMemory(serializedArgs.size, threshold)) {
                 val shm = sharedMemoryTransport.writeToShared(serializedArgs)
+                requestShm = shm
                 if (shm != null) IpcEnvelope(serviceKey = serviceKey, method = methodName, args = null,
                     largePayload = true, sharedMemory = shm)
                 else IpcEnvelope(serviceKey = serviceKey, method = methodName, args = serializedArgs)
@@ -98,7 +100,14 @@ object ProxyFactory {
                 IpcEnvelope(serviceKey = serviceKey, method = methodName, args = serializedArgs)
             }
 
-            val result = transport.invoke(envelope)
+            // Close the sender's SharedMemory copy after the synchronous Binder call completes.
+            // By then the kernel has dup'd the FD to the receiver, so closing here is safe and
+            // prevents an FD leak if the caller never explicitly closes the envelope.
+            val result = try {
+                transport.invoke(envelope)
+            } finally {
+                requestShm?.close()
+            }
 
             return when (result) {
                 is TransportResult.Success -> {

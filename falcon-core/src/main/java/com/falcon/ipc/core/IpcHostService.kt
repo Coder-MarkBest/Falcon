@@ -67,6 +67,9 @@ class IpcHostService : Service() {
             return try {
                 val result = messageRouter.handleLocal(request, callerProcess, callingPid)
                 val resultBytes = IpcSerializer.serializeResult(result)
+                // NOTE: the sender's SharedMemory copy for the RESPONSE cannot be closed here —
+                // the AIDL stub marshals the returned envelope after this method returns, so the
+                // FD must stay open until then. It is reclaimed by SharedMemory's GC Cleaner.
                 val response = if (TransportSelector.shouldUseSharedMemory(resultBytes.size, threshold)
                     && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
                     val shm = sharedMemoryTransport.writeToShared(resultBytes)
