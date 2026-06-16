@@ -11,7 +11,6 @@ import android.os.IBinder
 import android.os.Looper
 import com.falcon.ipc.aidl.IIpcHost
 import com.falcon.ipc.transport.BinderTransport
-import com.falcon.ipc.transport.SharedMemoryTransport
 import com.falcon.ipc.util.FalconLogger
 import com.falcon.ipc.util.ProcessUtils
 import java.util.concurrent.ConcurrentHashMap
@@ -31,8 +30,7 @@ enum class IpcState { CONNECTED, DISCONNECTED, RECONNECTING }
 class PeerManager(
     private val context: Context,
     private val registryUri: Uri,
-    private val threadPool: IpcThreadPool,
-    private val sharedMemoryTransport: SharedMemoryTransport? = null
+    private val threadPool: IpcThreadPool
 ) {
     private val connections = ConcurrentHashMap<String, PeerConnection>()
     private val reconnecting = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
@@ -115,7 +113,7 @@ class PeerManager(
         val connection = object : ServiceConnection {
             override fun onServiceConnected(name: ComponentName, binder: IBinder) {
                 val host = IIpcHost.Stub.asInterface(binder)
-                val transport = BinderTransport(host, sharedMemoryTransport)
+                val transport = BinderTransport(host)
                 val peer = PeerConnection(processName, transport, binder, deathRecipient, this)
                 connections[processName] = peer
 

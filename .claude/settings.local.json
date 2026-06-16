@@ -21,7 +21,12 @@
       "Bash(JAVA_HOME=/Library/Java/JavaVirtualMachines/zulu-17.jdk/Contents/Home ./gradlew :falcon-core:testDebugUnitTest --rerun)",
       "Bash(JAVA_HOME=/Library/Java/JavaVirtualMachines/zulu-17.jdk/Contents/Home ./gradlew :falcon-core:testDebugUnitTest --stacktrace)",
       "Bash(JAVA_HOME=/Library/Java/JavaVirtualMachines/zulu-17.jdk/Contents/Home ./gradlew :falcon-core:testDebugUnitTest --tests \"com.falcon.ipc.core.EventBusTest\")",
-      "Bash(JAVA_HOME=/Library/Java/JavaVirtualMachines/zulu-17.jdk/Contents/Home ./gradlew :falcon-core:testDebugUnitTest --tests \"com.falcon.ipc.runtime.FlowExtensionsTest.throttle limits emission rate\")"
+      "Bash(JAVA_HOME=/Library/Java/JavaVirtualMachines/zulu-17.jdk/Contents/Home ./gradlew :falcon-core:testDebugUnitTest --tests \"com.falcon.ipc.runtime.FlowExtensionsTest.throttle limits emission rate\")",
+      "Bash(git checkout *)",
+      "Bash(timeout 480 ./gradlew :falcon-core:test --tests \"com.falcon.ipc.security.RateLimiterTest\" --tests \"com.falcon.ipc.protocol.IpcSerializerTest\")",
+      "Bash(./gradlew :falcon-core:test --tests \"com.falcon.ipc.security.RateLimiterTest\" --tests \"com.falcon.ipc.protocol.IpcSerializerTest\")",
+      "Bash(./gradlew :falcon-core:tasks --all)",
+      "Bash(./gradlew :falcon-core:testDebugUnitTest --tests \"com.falcon.ipc.security.RateLimiterTest\" --tests \"com.falcon.ipc.protocol.IpcSerializerTest\")"
     ]
   }
 }

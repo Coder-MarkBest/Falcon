@@ -6,7 +6,6 @@ import com.falcon.ipc.protocol.IpcEnvelope
 import com.falcon.ipc.protocol.IpcSerializer
 import com.falcon.ipc.security.PermissionChecker
 import com.falcon.ipc.security.RateLimiter
-import com.falcon.ipc.transport.SharedMemoryTransport
 import java.lang.reflect.Method
 import java.util.concurrent.ConcurrentHashMap
 
@@ -15,23 +14,13 @@ class MessageRouter(
     private val monitor: MonitorFacade,
     private val permissionChecker: PermissionChecker,
     private val rateLimiter: RateLimiter,
-    private val circuitBreaker: CircuitBreaker = CircuitBreaker(),
-    private val sharedMemoryTransport: SharedMemoryTransport? = null
+    private val circuitBreaker: CircuitBreaker = CircuitBreaker()
 ) {
     private var interceptors: List<IpcInterceptor> = emptyList()
     private val methodCache = ConcurrentHashMap<String, Method>()
 
     fun setInterceptors(interceptors: List<IpcInterceptor>) {
         this.interceptors = interceptors
-    }
-
-    private fun payloadBytes(envelope: IpcEnvelope): ByteArray {
-        val shm = envelope.sharedMemory
-        if (envelope.largePayload && shm != null && sharedMemoryTransport != null
-            && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O_MR1) {
-            return try { sharedMemoryTransport.readFromShared(shm) } finally { shm.close() }
-        }
-        return envelope.args ?: ByteArray(0)
     }
 
     fun handleLocal(envelope: IpcEnvelope, callerProcess: String, callerPid: Int): Any? {
@@ -54,7 +43,7 @@ class MessageRouter(
             val service = registry.getService(envelope.serviceKey)
                 ?: throw IllegalStateException("Service not found: ${envelope.serviceKey}")
 
-            val bytes = payloadBytes(envelope)
+            val bytes = envelope.args ?: ByteArray(0)
             val probeArgs = IpcSerializer.deserializeArgs(bytes, emptyArray())
             val method = resolveMethod(service.javaClass, envelope.method, probeArgs.size)
                 ?: throw IllegalStateException("Method not found: ${envelope.method}")
