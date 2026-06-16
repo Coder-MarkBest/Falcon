@@ -14,7 +14,13 @@
       "Bash(/Users/xianxiaoli/Library/Java/JavaVirtualMachines/jbr-21.0.6/Contents/Home/bin/jlink *)",
       "Bash(/usr/libexec/java_home *)",
       "Bash(export JAVA_HOME=/Library/Java/JavaVirtualMachines/zulu-17.jdk/Contents/Home)",
-      "Bash(git rm *)"
+      "Bash(git rm *)",
+      "Bash(./gradlew :falcon-core:testDebugUnitTest)",
+      "Bash(JAVA_HOME=/Library/Java/JavaVirtualMachines/zulu-17.jdk/Contents/Home ./gradlew :falcon-core:testDebugUnitTest)",
+      "Bash(JAVA_HOME=/Library/Java/JavaVirtualMachines/zulu-17.jdk/Contents/Home ./gradlew :falcon-core:testDebugUnitTest --info)",
+      "Bash(JAVA_HOME=/Library/Java/JavaVirtualMachines/zulu-17.jdk/Contents/Home ./gradlew :falcon-core:testDebugUnitTest --rerun)",
+      "Bash(JAVA_HOME=/Library/Java/JavaVirtualMachines/zulu-17.jdk/Contents/Home ./gradlew :falcon-core:testDebugUnitTest --stacktrace)",
+      "Bash(JAVA_HOME=/Library/Java/JavaVirtualMachines/zulu-17.jdk/Contents/Home ./gradlew :falcon-core:testDebugUnitTest --tests \"com.falcon.ipc.core.EventBusTest\")"
     ]
   }
 }
