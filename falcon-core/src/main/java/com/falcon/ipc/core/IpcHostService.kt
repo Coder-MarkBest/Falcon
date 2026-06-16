@@ -59,9 +59,9 @@ class IpcHostService : Service() {
             if (!signatureGuard.verify(this@IpcHostService, callingUid)) {
                 return IpcEnvelope.error(ErrorCode.UNAUTHORIZED, "Signature mismatch")
             }
-            val callerProcess = callerResolver.resolve(callingPid)
+            val callerPackage = callerResolver.resolve(callingUid)
             return try {
-                val result = messageRouter.handleLocal(request, callerProcess, callingPid)
+                val result = messageRouter.handleLocal(request, callerPackage, callingPid)
                 IpcEnvelope.response(request.requestId, IpcSerializer.serializeResult(result))
             } catch (e: SecurityException) {
                 IpcEnvelope.error(ErrorCode.PERMISSION_DENIED, e.message ?: "Denied", request.requestId)

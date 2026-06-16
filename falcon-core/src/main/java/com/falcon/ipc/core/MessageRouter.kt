@@ -22,19 +22,19 @@ class MessageRouter(
         this.interceptors = interceptors
     }
 
-    fun handleLocal(envelope: IpcEnvelope, callerProcess: String, callerPid: Int): Any? {
+    fun handleLocal(envelope: IpcEnvelope, callerPackage: String, callerPid: Int): Any? {
         if (!rateLimiter.tryAcquire(callerPid)) {
             throw IllegalStateException("Rate limit exceeded for PID=$callerPid")
         }
         try {
             if (envelope.method == "__check_service__") {
                 val key = String(envelope.args ?: ByteArray(0), Charsets.UTF_8)
-                if (!permissionChecker.check(key, callerProcess)) return false
+                if (!permissionChecker.check(key, callerPackage)) return false
                 return registry.getService(key) != null
             }
 
-            if (!permissionChecker.check(envelope.serviceKey, callerProcess)) {
-                throw SecurityException("Permission denied: $callerProcess → ${envelope.serviceKey}")
+            if (!permissionChecker.check(envelope.serviceKey, callerPackage)) {
+                throw SecurityException("Permission denied: $callerPackage → ${envelope.serviceKey}")
             }
             val service = registry.getService(envelope.serviceKey)
                 ?: throw IllegalStateException("Service not found: ${envelope.serviceKey}")
