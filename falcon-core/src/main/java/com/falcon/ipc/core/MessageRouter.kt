@@ -13,8 +13,7 @@ class MessageRouter(
     private val registry: ServiceRegistry,
     private val monitor: MonitorFacade,
     private val permissionChecker: PermissionChecker,
-    private val rateLimiter: RateLimiter,
-    private val circuitBreaker: CircuitBreaker = CircuitBreaker()
+    private val rateLimiter: RateLimiter
 ) {
     private var interceptors: List<IpcInterceptor> = emptyList()
     private val methodCache = ConcurrentHashMap<String, Method>()
@@ -37,9 +36,6 @@ class MessageRouter(
             if (!permissionChecker.check(envelope.serviceKey, callerProcess)) {
                 throw SecurityException("Permission denied: $callerProcess → ${envelope.serviceKey}")
             }
-            if (!circuitBreaker.allowCall(envelope.serviceKey)) {
-                throw IllegalStateException("Circuit open for ${envelope.serviceKey}")
-            }
             val service = registry.getService(envelope.serviceKey)
                 ?: throw IllegalStateException("Service not found: ${envelope.serviceKey}")
 
@@ -53,11 +49,9 @@ class MessageRouter(
                 val args = IpcSerializer.deserializeArgs(bytes, method.parameterTypes)
                 val result = method.invoke(service, *args)
                 monitor.recordCall(envelope.serviceKey, envelope.method, true, System.currentTimeMillis() - startTime)
-                circuitBreaker.recordSuccess(envelope.serviceKey)
                 result
             } catch (e: Exception) {
                 monitor.recordCall(envelope.serviceKey, envelope.method, false, System.currentTimeMillis() - startTime)
-                circuitBreaker.recordFailure(envelope.serviceKey)
                 throw e
             }
         } finally {

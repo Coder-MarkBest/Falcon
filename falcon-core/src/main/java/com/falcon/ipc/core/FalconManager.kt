@@ -23,7 +23,6 @@ class FalconManager internal constructor(
 ) {
     val serviceRegistry = ServiceRegistry()
     val monitor = MonitorFacade().apply { setLevel(config.monitorLevel) }
-    val circuitBreaker = CircuitBreaker()
     val versionRegistry = ServiceVersionRegistry()
     val otaCompat = OtaCompatManager()
     val diagnostics = DiagnosticsManager()
