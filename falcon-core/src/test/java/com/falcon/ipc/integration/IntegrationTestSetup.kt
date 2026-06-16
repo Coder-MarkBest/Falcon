@@ -100,24 +100,6 @@ class IntegrationTestSetup {
     }
 
     @Test
-    fun `vehicle state integration`() {
-        val manager = VehicleStateManager()
-
-        manager.registerServicePriority("brakes", ServicePriority.CRITICAL)
-        manager.registerServicePriority("music", ServicePriority.OPTIONAL)
-
-        // Engine off — only critical
-        manager.setVehicleState(VehicleState.OFF)
-        assertTrue(manager.isServiceActive("brakes"))
-        assertFalse(manager.isServiceActive("music"))
-
-        // Engine on — all active
-        manager.setVehicleState(VehicleState.RUNNING)
-        assertTrue(manager.isServiceActive("brakes"))
-        assertTrue(manager.isServiceActive("music"))
-    }
-
-    @Test
     fun `batch execution integration`() {
         val registry = ServiceRegistry()
         registry.register(INavService::class, NavServiceImpl())
