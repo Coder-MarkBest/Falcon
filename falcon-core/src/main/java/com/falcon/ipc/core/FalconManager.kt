@@ -9,8 +9,11 @@ import com.falcon.ipc.security.PermissionChecker
 import com.falcon.ipc.security.RateLimiter
 import com.falcon.ipc.security.SignatureGuard
 import com.falcon.ipc.protocol.IpcEnvelope
+import com.falcon.ipc.protocol.IpcSerializer
 import com.falcon.ipc.service.IpcService
+import com.falcon.ipc.transport.TransportResult
 import com.falcon.ipc.transport.SharedMemoryTransport
+import com.falcon.ipc.util.CallerResolver
 import com.falcon.ipc.util.FalconLogger
 import com.falcon.ipc.util.ProcessUtils
 import kotlin.reflect.KClass
@@ -25,27 +28,39 @@ class FalconManager internal constructor(
     val versionRegistry = ServiceVersionRegistry()
     val otaCompat = OtaCompatManager()
     val diagnostics = DiagnosticsManager()
-    private val signatureGuard = SignatureGuard().apply { init(context) }
+    internal val signatureGuard = SignatureGuard().apply { init(context) }
+    internal val callerResolver = CallerResolver(context)
     private val permissionChecker = PermissionChecker(config.security.accessRules)
     private val rateLimiter = RateLimiter(
         config.security.rateLimitPerSecond,
         config.security.maxConcurrentCalls
     )
+    internal val sharedMemoryTransport: SharedMemoryTransport? =
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O_MR1)
+            SharedMemoryTransport(config.transport.maxSharedMemorySize)
+        else null
+    internal val sharedMemoryThreshold: Int get() = config.transport.sharedMemoryThreshold
     internal val messageRouter = MessageRouter(
-        serviceRegistry, monitor, permissionChecker, rateLimiter
+        serviceRegistry, monitor, permissionChecker, rateLimiter,
+        sharedMemoryTransport = sharedMemoryTransport
     )
-    private val sharedMemoryTransport = SharedMemoryTransport(config.transport.maxSharedMemorySize)
 
     private val registryUri = Uri.parse(
         "content://${context.packageName}.falcon.registry/services"
     )
+
+    internal val threadPool = IpcThreadPool()
 
     private var peerManager: PeerManager? = null
 
     fun start() {
         FalconLogger.enabled = true
         messageRouter.setInterceptors(config.interceptors)
-        peerManager = PeerManager(context, registryUri).also { it.start() }
+        peerManager = PeerManager(
+            context, registryUri,
+            threadPool = threadPool,
+            sharedMemoryTransport = sharedMemoryTransport
+        ).also { it.start() }
         FalconLogger.d("Falcon", "Started in ${ProcessUtils.getCurrentProcessName(context)}")
     }
 
@@ -62,28 +77,29 @@ class FalconManager internal constructor(
         val local = serviceRegistry.getService(key)
         if (local != null) return local as T
 
-        // 2. Search remote peers
+        // 2. Search remote peers — only create a proxy when the probe CONFIRMS the service exists
         val peers = peerManager?.getAllConnections() ?: return null
         for ((_, peer) in peers) {
-            // Check if this peer has the service
             try {
                 val checkEnvelope = IpcEnvelope(
                     serviceKey = "",
                     method = "__check_service__",
-                    args = key.toByteArray()
+                    args = key.toByteArray(Charsets.UTF_8)
                 )
-                peer.transport.invoke(checkEnvelope)
-                // If we got here, create a proxy
-                return ProxyFactory.create(serviceClass.java, key, peer.transport)
+                val result = peer.transport.invoke(checkEnvelope)
+                if (result is TransportResult.Success) {
+                    val data = result.data
+                    val hasService = if (data is ByteArray) {
+                        IpcSerializer.deserializeResult(data, Boolean::class.javaObjectType) == true
+                    } else false
+                    if (hasService) {
+                        return ProxyFactory.create(serviceClass.java, key, peer.transport,
+                            sharedMemoryTransport = sharedMemoryTransport, threshold = sharedMemoryThreshold)
+                    }
+                }
             } catch (e: Exception) {
-                continue
+                FalconLogger.w("Falcon", "peer probe failed for ${peer.processName}: ${e.message}")
             }
-        }
-
-        // 3. Try creating proxy for first available peer (optimistic)
-        val firstPeer = peers.values.firstOrNull()
-        if (firstPeer != null) {
-            return ProxyFactory.create(serviceClass.java, key, firstPeer.transport)
         }
 
         return null
@@ -95,7 +111,7 @@ class FalconManager internal constructor(
 
     fun stop() {
         peerManager?.stop()
-        sharedMemoryTransport.releaseAll()
+        threadPool.shutdown()
         serviceRegistry.unregisterAll()
         FalconLogger.d("Falcon", "Stopped")
     }
@@ -103,7 +119,7 @@ class FalconManager internal constructor(
     fun shutdown(timeoutMs: Long = 5000L) {
         FalconLogger.d("Falcon", "Shutting down (timeout=${timeoutMs}ms)...")
         peerManager?.stop()
-        sharedMemoryTransport.releaseAll()
+        threadPool.shutdown()
         serviceRegistry.unregisterAll()
         Falcon.instance = null
         FalconLogger.d("Falcon", "Shutdown complete")

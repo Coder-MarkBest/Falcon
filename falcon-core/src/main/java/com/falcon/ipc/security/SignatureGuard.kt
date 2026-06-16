@@ -11,6 +11,7 @@ class SignatureGuard {
 
     private var selfSignatureHash: String = ""
     private var selfUid: Int = -1
+    private val verifiedUids = java.util.concurrent.ConcurrentHashMap<Int, Boolean>()
 
     fun init(context: Context) {
         selfUid = Process.myUid()
@@ -19,6 +20,13 @@ class SignatureGuard {
     }
 
     fun verify(context: Context, callingUid: Int): Boolean {
+        verifiedUids[callingUid]?.let { return it }
+        val result = computeVerification(context, callingUid)
+        verifiedUids[callingUid] = result
+        return result
+    }
+
+    private fun computeVerification(context: Context, callingUid: Int): Boolean {
         if (callingUid != selfUid) {
             FalconLogger.w("Security", "UID mismatch: caller=$callingUid self=$selfUid")
             return false

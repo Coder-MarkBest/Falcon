@@ -13,7 +13,9 @@ data class IpcEnvelope(
     val traceId: String? = null,
     val isError: Boolean = false,
     val errorCode: Int = ErrorCode.SUCCESS,
-    val errorMessage: String = ""
+    val errorMessage: String = "",
+    val largePayload: Boolean = false,
+    val sharedMemory: android.os.SharedMemory? = null
 ) : Parcelable {
 
     constructor(parcel: Parcel) : this(
@@ -25,7 +27,15 @@ data class IpcEnvelope(
         traceId = parcel.readString(),
         isError = parcel.readByte() != 0.toByte(),
         errorCode = parcel.readInt(),
-        errorMessage = parcel.readString() ?: ""
+        errorMessage = parcel.readString() ?: "",
+        largePayload = parcel.readByte() != 0.toByte(),
+        sharedMemory = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O_MR1) {
+            if (android.os.Build.VERSION.SDK_INT >= 33)
+                parcel.readParcelable(android.os.SharedMemory::class.java.classLoader, android.os.SharedMemory::class.java)
+            else
+                @Suppress("DEPRECATION")
+                parcel.readParcelable<android.os.SharedMemory>(android.os.SharedMemory::class.java.classLoader)
+        } else null
     )
 
     override fun writeToParcel(parcel: Parcel, flags: Int) {
@@ -38,9 +48,13 @@ data class IpcEnvelope(
         parcel.writeByte(if (isError) 1 else 0)
         parcel.writeInt(errorCode)
         parcel.writeString(errorMessage)
+        parcel.writeByte(if (largePayload) 1 else 0)
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O_MR1)
+            parcel.writeParcelable(sharedMemory, flags)
     }
 
-    override fun describeContents(): Int = 0
+    override fun describeContents(): Int =
+        if (sharedMemory != null) Parcelable.CONTENTS_FILE_DESCRIPTOR else 0
 
     companion object CREATOR : Parcelable.Creator<IpcEnvelope> {
         override fun createFromParcel(parcel: Parcel): IpcEnvelope = IpcEnvelope(parcel)

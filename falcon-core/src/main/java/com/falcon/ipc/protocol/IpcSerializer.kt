@@ -2,10 +2,6 @@ package com.falcon.ipc.protocol
 
 import android.os.Parcel
 import android.os.Parcelable
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.decodeFromString
-import kotlinx.serialization.Serializable
 
 object IpcSerializer {
 
@@ -21,8 +17,6 @@ object IpcSerializer {
     const val TYPE_PARCELABLE: Byte = 8
     const val TYPE_LIST: Byte = 9
     const val TYPE_MAP: Byte = 10
-
-    private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
     fun serializeArgs(args: Array<Any?>): ByteArray {
         val parcel = Parcel.obtain()
@@ -108,7 +102,6 @@ object IpcSerializer {
             }
             is ByteArray -> {
                 parcel.writeByte(TYPE_BYTE_ARRAY)
-                parcel.writeInt(arg.size)
                 parcel.writeByteArray(arg)
             }
             is Parcelable -> {
@@ -129,11 +122,9 @@ object IpcSerializer {
                     serializeArg(parcel, v)
                 }
             }
-            else -> {
-                // Fallback: serialize as JSON string
-                parcel.writeByte(TYPE_STRING)
-                parcel.writeString(json.encodeToString(arg.toString()))
-            }
+            else -> throw IllegalArgumentException(
+                "Unsupported IPC type: ${arg::class.java.name}. Implement Parcelable or use a supported type."
+            )
         }
     }
 
@@ -149,9 +140,7 @@ object IpcSerializer {
             TYPE_BOOLEAN -> parcel.readByte() != 0.toByte()
             TYPE_STRING -> parcel.readString()
             TYPE_BYTE_ARRAY -> {
-                val size = parcel.readInt()
-                require(size in 0..32 * 1024 * 1024) { "ByteArray size out of range: $size" }
-                ByteArray(size).also { parcel.readByteArray(it) }
+                parcel.createByteArray() ?: ByteArray(0)
             }
             TYPE_PARCELABLE -> {
                 parcel.readString() // className

@@ -1,9 +1,12 @@
 package com.falcon.ipc.core
 
+import android.os.Build
 import com.falcon.ipc.protocol.IpcEnvelope
 import com.falcon.ipc.protocol.IpcSerializer
 import com.falcon.ipc.transport.IpcTransport
+import com.falcon.ipc.transport.SharedMemoryTransport
 import com.falcon.ipc.transport.TransportResult
+import com.falcon.ipc.transport.TransportSelector
 import com.falcon.ipc.service.IpcService
 import java.lang.reflect.InvocationHandler
 import java.lang.reflect.Method
@@ -18,18 +21,22 @@ object ProxyFactory {
     fun <T : IpcService> create(
         serviceClass: Class<T>,
         serviceKey: String,
-        transport: IpcTransport
+        transport: IpcTransport,
+        sharedMemoryTransport: SharedMemoryTransport? = null,
+        threshold: Int = 64 * 1024
     ): T {
         return Proxy.newProxyInstance(
             serviceClass.classLoader,
             arrayOf(serviceClass),
-            IpcInvocationHandler(serviceKey, transport)
+            IpcInvocationHandler(serviceKey, transport, sharedMemoryTransport, threshold)
         ) as T
     }
 
     private class IpcInvocationHandler(
         private val serviceKey: String,
-        private val transport: IpcTransport
+        private val transport: IpcTransport,
+        private val sharedMemoryTransport: SharedMemoryTransport? = null,
+        private val threshold: Int = 64 * 1024
     ) : InvocationHandler {
 
         override fun invoke(proxy: Any, method: Method, args: Array<out Any?>?): Any? {
@@ -80,13 +87,29 @@ object ProxyFactory {
             method: Method
         ): Any? {
             val serializedArgs = IpcSerializer.serializeArgs(args)
-            val envelope = IpcEnvelope(
-                serviceKey = serviceKey,
-                method = methodName,
-                args = serializedArgs
-            )
+            var requestShm: android.os.SharedMemory? = null
+            val envelope = if (sharedMemoryTransport != null
+                && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1
+                && TransportSelector.shouldUseSharedMemory(serializedArgs.size, threshold)) {
+                val shm = sharedMemoryTransport.writeToShared(serializedArgs)
+                requestShm = shm
+                if (shm != null) IpcEnvelope(serviceKey = serviceKey, method = methodName, args = null,
+                    largePayload = true, sharedMemory = shm)
+                else IpcEnvelope(serviceKey = serviceKey, method = methodName, args = serializedArgs)
+            } else {
+                IpcEnvelope(serviceKey = serviceKey, method = methodName, args = serializedArgs)
+            }
 
-            val result = transport.invoke(envelope)
+            // Close the sender's SharedMemory copy after the synchronous Binder call completes.
+            // By then the kernel has dup'd the FD to the receiver, so closing here is safe and
+            // prevents an FD leak if the caller never explicitly closes the envelope.
+            val result = try {
+                transport.invoke(envelope)
+            } finally {
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O_MR1) {
+                    requestShm?.close()
+                }
+            }
 
             return when (result) {
                 is TransportResult.Success -> {

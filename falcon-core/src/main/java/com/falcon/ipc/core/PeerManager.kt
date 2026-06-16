@@ -11,6 +11,7 @@ import android.os.IBinder
 import android.os.Looper
 import com.falcon.ipc.aidl.IIpcHost
 import com.falcon.ipc.transport.BinderTransport
+import com.falcon.ipc.transport.SharedMemoryTransport
 import com.falcon.ipc.util.FalconLogger
 import com.falcon.ipc.util.ProcessUtils
 import java.util.concurrent.ConcurrentHashMap
@@ -29,9 +30,12 @@ enum class IpcState { CONNECTED, DISCONNECTED, RECONNECTING }
 
 class PeerManager(
     private val context: Context,
-    private val registryUri: Uri
+    private val registryUri: Uri,
+    private val threadPool: IpcThreadPool,
+    private val sharedMemoryTransport: SharedMemoryTransport? = null
 ) {
     private val connections = ConcurrentHashMap<String, PeerConnection>()
+    private val reconnecting = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private val stateCallbacks = CopyOnWriteArrayList<(IpcState, String) -> Unit>()
     private val reconnectDelayMs = AtomicLong(500)
     private val maxReconnectDelayMs = 30_000L
@@ -53,9 +57,9 @@ class PeerManager(
         context.contentResolver.unregisterContentObserver(registryObserver)
         connections.values.forEach { conn ->
             try { conn.binder.unlinkToDeath(conn.deathRecipient, 0) }
-            catch (_: Exception) {}
+            catch (e: Exception) { FalconLogger.w("Peer", "stop cleanup: ${e.message}") }
             try { context.unbindService(conn.serviceConnection) }
-            catch (_: Exception) {}
+            catch (e: Exception) { FalconLogger.w("Peer", "stop cleanup: ${e.message}") }
         }
         connections.clear()
     }
@@ -69,27 +73,30 @@ class PeerManager(
     }
 
     private fun refreshPeers() {
+        threadPool.submit {
+            val names = queryPeerProcessNames()
+            handler.post {
+                names.forEach { name ->
+                    if (!connections.containsKey(name)) bindPeer(name)
+                }
+            }
+        }
+    }
+
+    private fun queryPeerProcessNames(): Set<String> {
         val cursor = context.contentResolver.query(
             registryUri, null,
             "process_name != ?",
             arrayOf(ProcessUtils.getCurrentProcessName(context)),
             null
-        ) ?: return
-
-        val processNames = mutableSetOf<String>()
+        ) ?: return emptySet()
+        val names = mutableSetOf<String>()
         cursor.use {
             val colIdx = it.getColumnIndex("process_name")
-            if (colIdx < 0) return
-            while (it.moveToNext()) {
-                processNames.add(it.getString(colIdx))
-            }
+            if (colIdx < 0) return emptySet()
+            while (it.moveToNext()) names.add(it.getString(colIdx))
         }
-
-        processNames.forEach { name ->
-            if (!connections.containsKey(name)) {
-                bindPeer(name)
-            }
-        }
+        return names
     }
 
     private fun bindPeer(processName: String) {
@@ -108,12 +115,13 @@ class PeerManager(
         val connection = object : ServiceConnection {
             override fun onServiceConnected(name: ComponentName, binder: IBinder) {
                 val host = IIpcHost.Stub.asInterface(binder)
-                val transport = BinderTransport(host)
+                val transport = BinderTransport(host, sharedMemoryTransport)
                 val peer = PeerConnection(processName, transport, binder, deathRecipient, this)
                 connections[processName] = peer
 
                 binder.linkToDeath(deathRecipient, 0)
 
+                reconnecting.remove(processName)
                 reconnectDelayMs.set(500)
                 notifyState(IpcState.CONNECTED, processName)
                 FalconLogger.d("Peer", "Connected to $processName")
@@ -135,10 +143,12 @@ class PeerManager(
     }
 
     private fun scheduleReconnect(processName: String) {
+        if (!reconnecting.add(processName)) return
         notifyState(IpcState.RECONNECTING, processName)
         val delay = reconnectDelayMs.get()
         handler.postDelayed({
             FalconLogger.d("Peer", "Reconnecting to $processName (delay=${delay}ms)")
+            reconnecting.remove(processName)
             bindPeer(processName)
             reconnectDelayMs.updateAndGet { (it * 2).coerceAtMost(maxReconnectDelayMs) }
         }, delay)
