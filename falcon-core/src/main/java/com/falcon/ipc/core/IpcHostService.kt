@@ -25,7 +25,7 @@ class IpcHostService : Service() {
     private lateinit var callerResolver: CallerResolver
     private lateinit var serviceRegistry: ServiceRegistry
     private lateinit var messageRouter: MessageRouter
-    private lateinit var sharedMemoryTransport: SharedMemoryTransport
+    private var sharedMemoryTransport: SharedMemoryTransport? = null
     private var threshold: Int = 64 * 1024
     private val eventSubscribers = ConcurrentHashMap<String, CopyOnWriteArrayList<IIpcEventCallback>>()
 
@@ -72,7 +72,7 @@ class IpcHostService : Service() {
                 // FD must stay open until then. It is reclaimed by SharedMemory's GC Cleaner.
                 val response = if (TransportSelector.shouldUseSharedMemory(resultBytes.size, threshold)
                     && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-                    val shm = sharedMemoryTransport.writeToShared(resultBytes)
+                    val shm = sharedMemoryTransport?.writeToShared(resultBytes)
                     if (shm != null) IpcEnvelope(requestId = request.requestId, largePayload = true, sharedMemory = shm)
                     else IpcEnvelope.response(request.requestId, resultBytes)
                 } else {

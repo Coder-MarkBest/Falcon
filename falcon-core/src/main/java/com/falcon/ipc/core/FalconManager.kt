@@ -33,7 +33,10 @@ class FalconManager internal constructor(
         config.security.rateLimitPerSecond,
         config.security.maxConcurrentCalls
     )
-    internal val sharedMemoryTransport = SharedMemoryTransport(config.transport.maxSharedMemorySize)
+    internal val sharedMemoryTransport: SharedMemoryTransport? =
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O_MR1)
+            SharedMemoryTransport(config.transport.maxSharedMemorySize)
+        else null
     internal val sharedMemoryThreshold: Int get() = config.transport.sharedMemoryThreshold
     internal val messageRouter = MessageRouter(
         serviceRegistry, monitor, permissionChecker, rateLimiter,
@@ -78,7 +81,8 @@ class FalconManager internal constructor(
                 )
                 peer.transport.invoke(checkEnvelope)
                 // If we got here, create a proxy
-                return ProxyFactory.create(serviceClass.java, key, peer.transport)
+                return ProxyFactory.create(serviceClass.java, key, peer.transport,
+                    sharedMemoryTransport = sharedMemoryTransport, threshold = sharedMemoryThreshold)
             } catch (e: Exception) {
                 continue
             }
@@ -87,7 +91,8 @@ class FalconManager internal constructor(
         // 3. Try creating proxy for first available peer (optimistic)
         val firstPeer = peers.values.firstOrNull()
         if (firstPeer != null) {
-            return ProxyFactory.create(serviceClass.java, key, firstPeer.transport)
+            return ProxyFactory.create(serviceClass.java, key, firstPeer.transport,
+                sharedMemoryTransport = sharedMemoryTransport, threshold = sharedMemoryThreshold)
         }
 
         return null
