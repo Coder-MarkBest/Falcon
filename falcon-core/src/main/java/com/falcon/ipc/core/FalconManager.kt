@@ -24,7 +24,7 @@ class FalconManager internal constructor(
     val serviceRegistry = ServiceRegistry()
     val monitor = MonitorFacade().apply { setLevel(config.monitorLevel) }
     val diagnostics = DiagnosticsManager()
-    internal val signatureGuard = SignatureGuard().apply { init(context) }
+    internal val signatureGuard = SignatureGuard().apply { init(context, config.security.trustedSignatures) }
     internal val callerResolver = CallerResolver(context)
     private val permissionChecker = PermissionChecker(config.security.accessRules)
     private val rateLimiter = RateLimiter(

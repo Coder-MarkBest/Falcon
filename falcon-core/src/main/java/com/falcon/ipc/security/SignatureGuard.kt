@@ -11,6 +11,7 @@ class SignatureGuard {
 
     private var selfSignatureHash: String = ""
     private var selfUid: Int = -1
+    private var trustedSignatures: Set<String> = emptySet()
     private val verifiedUids = java.util.concurrent.ConcurrentHashMap<Int, Boolean>()
 
     companion object {
@@ -19,10 +20,11 @@ class SignatureGuard {
             callerSignatureHashes.isNotEmpty() && trusted.containsAll(callerSignatureHashes)
     }
 
-    fun init(context: Context) {
+    fun init(context: Context, trustedSignatures: Set<String> = emptySet()) {
         selfUid = Process.myUid()
         selfSignatureHash = computeSignatureHash(context, context.packageName)
-        FalconLogger.d("Security", "SignatureGuard initialized, UID=$selfUid")
+        this.trustedSignatures = trustedSignatures
+        FalconLogger.d("Security", "SignatureGuard initialized, UID=$selfUid, trusted=${trustedSignatures.size}")
     }
 
     fun verify(context: Context, callingUid: Int): Boolean {
@@ -33,22 +35,21 @@ class SignatureGuard {
     }
 
     private fun computeVerification(context: Context, callingUid: Int): Boolean {
-        if (callingUid != selfUid) {
-            FalconLogger.w("Security", "UID mismatch: caller=$callingUid self=$selfUid")
-            return false
-        }
+        val callerPkgs = context.packageManager.getPackagesForUid(callingUid) ?: return false
+        if (callerPkgs.isEmpty()) return false
 
-        val callerPkgs = context.packageManager.getPackagesForUid(callingUid)
-            ?: return false
-
-        return callerPkgs.all { pkg ->
-            try {
-                computeSignatureHash(context, pkg) == selfSignatureHash
+        val trusted = trustedSignatures + selfSignatureHash
+        val callerHashes = mutableSetOf<String>()
+        for (pkg in callerPkgs) {
+            val hash = try {
+                computeSignatureHash(context, pkg)
             } catch (e: Exception) {
-                FalconLogger.e("Security", "Failed to verify signature for $pkg", e)
-                false
+                FalconLogger.e("Security", "Failed to read signature for $pkg", e)
+                return false
             }
+            callerHashes.add(hash)
         }
+        return isTrusted(callerHashes, trusted)
     }
 
     private fun computeSignatureHash(context: Context, packageName: String): String {
