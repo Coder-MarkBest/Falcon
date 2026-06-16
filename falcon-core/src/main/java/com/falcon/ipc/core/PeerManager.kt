@@ -35,6 +35,7 @@ class PeerManager(
     private val sharedMemoryTransport: SharedMemoryTransport? = null
 ) {
     private val connections = ConcurrentHashMap<String, PeerConnection>()
+    private val reconnecting = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private val stateCallbacks = CopyOnWriteArrayList<(IpcState, String) -> Unit>()
     private val reconnectDelayMs = AtomicLong(500)
     private val maxReconnectDelayMs = 30_000L
@@ -56,9 +57,9 @@ class PeerManager(
         context.contentResolver.unregisterContentObserver(registryObserver)
         connections.values.forEach { conn ->
             try { conn.binder.unlinkToDeath(conn.deathRecipient, 0) }
-            catch (_: Exception) {}
+            catch (e: Exception) { FalconLogger.w("Peer", "stop cleanup: ${e.message}") }
             try { context.unbindService(conn.serviceConnection) }
-            catch (_: Exception) {}
+            catch (e: Exception) { FalconLogger.w("Peer", "stop cleanup: ${e.message}") }
         }
         connections.clear()
     }
@@ -120,6 +121,7 @@ class PeerManager(
 
                 binder.linkToDeath(deathRecipient, 0)
 
+                reconnecting.remove(processName)
                 reconnectDelayMs.set(500)
                 notifyState(IpcState.CONNECTED, processName)
                 FalconLogger.d("Peer", "Connected to $processName")
@@ -141,10 +143,12 @@ class PeerManager(
     }
 
     private fun scheduleReconnect(processName: String) {
+        if (!reconnecting.add(processName)) return
         notifyState(IpcState.RECONNECTING, processName)
         val delay = reconnectDelayMs.get()
         handler.postDelayed({
             FalconLogger.d("Peer", "Reconnecting to $processName (delay=${delay}ms)")
+            reconnecting.remove(processName)
             bindPeer(processName)
             reconnectDelayMs.updateAndGet { (it * 2).coerceAtMost(maxReconnectDelayMs) }
         }, delay)

@@ -9,7 +9,9 @@ import com.falcon.ipc.security.PermissionChecker
 import com.falcon.ipc.security.RateLimiter
 import com.falcon.ipc.security.SignatureGuard
 import com.falcon.ipc.protocol.IpcEnvelope
+import com.falcon.ipc.protocol.IpcSerializer
 import com.falcon.ipc.service.IpcService
+import com.falcon.ipc.transport.TransportResult
 import com.falcon.ipc.transport.SharedMemoryTransport
 import com.falcon.ipc.util.CallerResolver
 import com.falcon.ipc.util.FalconLogger
@@ -75,30 +77,29 @@ class FalconManager internal constructor(
         val local = serviceRegistry.getService(key)
         if (local != null) return local as T
 
-        // 2. Search remote peers
+        // 2. Search remote peers — only create a proxy when the probe CONFIRMS the service exists
         val peers = peerManager?.getAllConnections() ?: return null
         for ((_, peer) in peers) {
-            // Check if this peer has the service
             try {
                 val checkEnvelope = IpcEnvelope(
                     serviceKey = "",
                     method = "__check_service__",
-                    args = key.toByteArray()
+                    args = key.toByteArray(Charsets.UTF_8)
                 )
-                peer.transport.invoke(checkEnvelope)
-                // If we got here, create a proxy
-                return ProxyFactory.create(serviceClass.java, key, peer.transport,
-                    sharedMemoryTransport = sharedMemoryTransport, threshold = sharedMemoryThreshold)
+                val result = peer.transport.invoke(checkEnvelope)
+                if (result is TransportResult.Success) {
+                    val data = result.data
+                    val hasService = if (data is ByteArray) {
+                        IpcSerializer.deserializeResult(data, Boolean::class.javaObjectType) == true
+                    } else false
+                    if (hasService) {
+                        return ProxyFactory.create(serviceClass.java, key, peer.transport,
+                            sharedMemoryTransport = sharedMemoryTransport, threshold = sharedMemoryThreshold)
+                    }
+                }
             } catch (e: Exception) {
-                continue
+                FalconLogger.w("Falcon", "peer probe failed for ${peer.processName}: ${e.message}")
             }
-        }
-
-        // 3. Try creating proxy for first available peer (optimistic)
-        val firstPeer = peers.values.firstOrNull()
-        if (firstPeer != null) {
-            return ProxyFactory.create(serviceClass.java, key, firstPeer.transport,
-                sharedMemoryTransport = sharedMemoryTransport, threshold = sharedMemoryThreshold)
         }
 
         return null
