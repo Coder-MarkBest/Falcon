@@ -53,7 +53,8 @@ data class IpcEnvelope(
             parcel.writeParcelable(sharedMemory, flags)
     }
 
-    override fun describeContents(): Int = 0
+    override fun describeContents(): Int =
+        if (sharedMemory != null) Parcelable.CONTENTS_FILE_DESCRIPTOR else 0
 
     companion object CREATOR : Parcelable.Creator<IpcEnvelope> {
         override fun createFromParcel(parcel: Parcel): IpcEnvelope = IpcEnvelope(parcel)
