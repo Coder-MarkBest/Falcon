@@ -52,13 +52,13 @@ class IntegrationTestSetup {
         // Simulate IPC call
         val navResult = router.handleLocal(
             IpcEnvelope(serviceKey = INavService::class.qualifiedName!!, method = "getLocation"),
-            "test"
+            "test", 0
         )
         assertEquals("Beijing, 39.9, 116.4", navResult)
 
         val mediaResult = router.handleLocal(
             IpcEnvelope(serviceKey = IMediaService::class.qualifiedName!!, method = "getVolume"),
-            "test"
+            "test", 0
         )
         assertEquals(50, mediaResult)
     }
@@ -79,7 +79,7 @@ class IntegrationTestSetup {
         repeat(1000) {
             router.handleLocal(
                 IpcEnvelope(serviceKey = INavService::class.qualifiedName!!, method = "getLocation"),
-                "test"
+                "test", 0
             )
         }
         val elapsed = System.currentTimeMillis() - start
@@ -132,7 +132,7 @@ class IntegrationTestSetup {
         repeat(10) {
             router.handleLocal(
                 IpcEnvelope(serviceKey = INavService::class.qualifiedName!!, method = "getLocation"),
-                "test"
+                "test", 0
             )
         }
 

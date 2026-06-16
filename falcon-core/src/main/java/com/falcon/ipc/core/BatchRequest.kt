@@ -22,12 +22,12 @@ data class BatchResponse(
 class BatchExecutor(
     private val router: MessageRouter
 ) {
-    fun execute(batch: BatchRequest, callerProcess: String): BatchResponse {
+    fun execute(batch: BatchRequest, callerProcess: String, callerPid: Int = 0): BatchResponse {
         val start = System.currentTimeMillis()
 
         val responses = batch.envelopes.map { envelope ->
             try {
-                val result = router.handleLocal(envelope, callerProcess)
+                val result = router.handleLocal(envelope, callerProcess, callerPid)
                 IpcEnvelope.response(envelope.requestId, IpcSerializer.serializeResult(result))
             } catch (e: Exception) {
                 IpcEnvelope.error(-1, e.message ?: "Error", envelope.requestId)

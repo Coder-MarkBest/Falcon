@@ -58,7 +58,7 @@ class EndToEndPipelineTest {
         // Create local transport (simulates Binder)
         val transport = LocalTransport { envelope ->
             try {
-                val result = router.handleLocal(envelope, "test")
+                val result = router.handleLocal(envelope, "test", 0)
                 IpcEnvelope.response(envelope.requestId, IpcSerializer.serializeResult(result))
             } catch (e: Exception) {
                 IpcEnvelope.error(-1, e.message ?: "Error", envelope.requestId)
@@ -94,7 +94,7 @@ class EndToEndPipelineTest {
 
         val transport = LocalTransport { envelope ->
             try {
-                val result = router.handleLocal(envelope, "test")
+                val result = router.handleLocal(envelope, "test", 0)
                 IpcEnvelope.response(envelope.requestId, IpcSerializer.serializeResult(result))
             } catch (e: Exception) {
                 IpcEnvelope.error(-1, e.message ?: "Error", envelope.requestId)
@@ -131,7 +131,7 @@ class EndToEndPipelineTest {
 
         val transport = LocalTransport { envelope ->
             try {
-                val result = router.handleLocal(envelope, "test")
+                val result = router.handleLocal(envelope, "test", 0)
                 IpcEnvelope.response(envelope.requestId, IpcSerializer.serializeResult(result))
             } catch (e: Exception) {
                 IpcEnvelope.error(-1, e.message ?: "Error", envelope.requestId)
