@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.falcon.ipc.core.MessageRouterTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-06-16T11:07:04" hostname="xianxiaolideiMac.local" time="0.016">
+  <properties/>
+  <testcase name="checks permission before routing" classname="com.falcon.ipc.core.MessageRouterTest" time="0.016"/>
+  <testcase name="routes to local service" classname="com.falcon.ipc.core.MessageRouterTest" time="0.0"/>
+  <testcase name="returns error for unknown service" classname="com.falcon.ipc.core.MessageRouterTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

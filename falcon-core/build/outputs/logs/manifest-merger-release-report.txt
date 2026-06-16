@@ -1,0 +1,14 @@
+-- Merging decision tree log ---
+manifest
+ADDED from /Users/xianxiaoli/ClaudeProjects/FastIPC/falcon-core/src/main/AndroidManifest.xml:2:1-13
+INJECTED from /Users/xianxiaoli/ClaudeProjects/FastIPC/falcon-core/src/main/AndroidManifest.xml:2:1-13
+	package
+		INJECTED from /Users/xianxiaoli/ClaudeProjects/FastIPC/falcon-core/src/main/AndroidManifest.xml
+uses-sdk
+INJECTED from /Users/xianxiaoli/ClaudeProjects/FastIPC/falcon-core/src/main/AndroidManifest.xml reason: use-sdk injection requested
+INJECTED from /Users/xianxiaoli/ClaudeProjects/FastIPC/falcon-core/src/main/AndroidManifest.xml
+INJECTED from /Users/xianxiaoli/ClaudeProjects/FastIPC/falcon-core/src/main/AndroidManifest.xml
+	android:targetSdkVersion
+		INJECTED from /Users/xianxiaoli/ClaudeProjects/FastIPC/falcon-core/src/main/AndroidManifest.xml
+	android:minSdkVersion
+		INJECTED from /Users/xianxiaoli/ClaudeProjects/FastIPC/falcon-core/src/main/AndroidManifest.xml

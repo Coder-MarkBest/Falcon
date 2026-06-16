@@ -38,6 +38,6 @@ class BinderTransport(
     }
 
     fun unlinkToDeath(recipient: IBinder.DeathRecipient) {
-        host.asBinder().unlinkToDeath(recipient)
+        host.asBinder().unlinkToDeath(recipient, 0)
     }
 }

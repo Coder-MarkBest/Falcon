@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.falcon.ipc.security.PermissionCheckerTest" tests="5" skipped="0" failures="0" errors="0" timestamp="2026-06-16T11:07:04" hostname="xianxiaolideiMac.local" time="0.001">
+  <properties/>
+  <testcase name="allowList permits listed process" classname="com.falcon.ipc.security.PermissionCheckerTest" time="0.0"/>
+  <testcase name="denyList blocks listed process" classname="com.falcon.ipc.security.PermissionCheckerTest" time="0.0"/>
+  <testcase name="no rules means allow all" classname="com.falcon.ipc.security.PermissionCheckerTest" time="0.0"/>
+  <testcase name="denyList takes precedence over allowList" classname="com.falcon.ipc.security.PermissionCheckerTest" time="0.0"/>
+  <testcase name="allowList rejects unlisted process" classname="com.falcon.ipc.security.PermissionCheckerTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

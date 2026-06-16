@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.falcon.ipc.monitor.MonitorFacadeTest" tests="5" skipped="0" failures="0" errors="0" timestamp="2026-06-16T11:07:04" hostname="xianxiaolideiMac.local" time="0.003">
+  <properties/>
+  <testcase name="NONE level records nothing" classname="com.falcon.ipc.monitor.MonitorFacadeTest" time="0.001"/>
+  <testcase name="stats separated by service and method" classname="com.falcon.ipc.monitor.MonitorFacadeTest" time="0.0"/>
+  <testcase name="setMonitorConfig dynamically enables" classname="com.falcon.ipc.monitor.MonitorFacadeTest" time="0.001"/>
+  <testcase name="DETAILED level records latency" classname="com.falcon.ipc.monitor.MonitorFacadeTest" time="0.0"/>
+  <testcase name="BASIC level records call count" classname="com.falcon.ipc.monitor.MonitorFacadeTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

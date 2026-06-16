@@ -6,7 +6,14 @@
       "Bash(git commit -m 'docs: add Falcon IPC framework design spec *)",
       "Bash(git commit -m 'docs: add Falcon IPC implementation plan with 21 tasks *)",
       "Bash(git commit -m 'chore: set up Gradle project structure with 4 modules *)",
-      "Bash(git commit *)"
+      "Bash(git commit *)",
+      "Bash(/Users/xianxiaoli/.gradle/wrapper/dists/gradle-8.10-bin/deqhafrv1ntovfmgh0nh3npr9/gradle-8.10/bin/gradle wrapper *)",
+      "Bash(./gradlew :falcon-core:test)",
+      "Bash(./gradlew :falcon-core:compileDebugAidl)",
+      "Bash(java *)",
+      "Bash(/Users/xianxiaoli/Library/Java/JavaVirtualMachines/jbr-21.0.6/Contents/Home/bin/jlink *)",
+      "Bash(/usr/libexec/java_home *)",
+      "Bash(export JAVA_HOME=/Library/Java/JavaVirtualMachines/zulu-17.jdk/Contents/Home)"
     ]
   }
 }

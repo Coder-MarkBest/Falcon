@@ -43,6 +43,11 @@ class SignatureGuardTest {
 
     @Test
     fun `verify returns false for different UID`() {
+        val sig = Signature("test-cert".toByteArray())
+        val pkgInfo = PackageInfo().apply { signatures = arrayOf(sig) }
+        whenever(packageManager.getPackageInfo("com.falcon.test", PackageManager.GET_SIGNATURES))
+            .thenReturn(pkgInfo)
+
         val guard = SignatureGuard()
         guard.init(context)
         assertFalse(guard.verify(context, 99999))
