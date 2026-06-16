@@ -112,13 +112,27 @@ class MessageRouterTest {
             RateLimiter(clock = { 0L }))
         val key = EchoService::class.qualifiedName!!
         val present = router.handleLocal(
-            IpcEnvelope(serviceKey = "", method = "__check_service__", args = key.toByteArray()),
+            IpcEnvelope(serviceKey = "", method = "__check_service__", args = key.toByteArray(Charsets.UTF_8)),
             "proc", 1234)
         assertEquals(true, present)
         val absent = router.handleLocal(
-            IpcEnvelope(serviceKey = "", method = "__check_service__", args = "no.such.Svc".toByteArray()),
+            IpcEnvelope(serviceKey = "", method = "__check_service__", args = "no.such.Svc".toByteArray(Charsets.UTF_8)),
             "proc", 1234)
         assertEquals(false, absent)
+    }
+
+    @Test
+    fun `check_service returns false when caller lacks permission`() {
+        val registry = ServiceRegistry()
+        registry.register(EchoService::class, EchoServiceImpl())
+        val key = EchoService::class.qualifiedName!!
+        // allowList excludes "intruder" -> denied
+        val checker = PermissionChecker(mapOf(key to AccessRule(allowList = setOf("trusted"))))
+        val router = MessageRouter(registry, MonitorFacade(), checker, RateLimiter(clock = { 0L }))
+        val result = router.handleLocal(
+            IpcEnvelope(serviceKey = "", method = "__check_service__", args = key.toByteArray(Charsets.UTF_8)),
+            "intruder", 1234)
+        assertEquals(false, result) // denied probe returns false, does not throw and does not reveal existence
     }
 
     @Test

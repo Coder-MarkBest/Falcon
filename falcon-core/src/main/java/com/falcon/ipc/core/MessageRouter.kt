@@ -29,7 +29,7 @@ class MessageRouter(
         }
         try {
             if (envelope.method == "__check_service__") {
-                val key = String(envelope.args ?: ByteArray(0))
+                val key = String(envelope.args ?: ByteArray(0), Charsets.UTF_8)
                 if (!permissionChecker.check(key, callerProcess)) return false
                 return registry.getService(key) != null
             }
