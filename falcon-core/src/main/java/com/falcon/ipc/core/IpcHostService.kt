@@ -3,13 +3,17 @@ package com.falcon.ipc.core
 import android.app.Service
 import android.content.Intent
 import android.os.Binder
+import android.os.Build
 import android.os.IBinder
 import com.falcon.ipc.Falcon
 import com.falcon.ipc.aidl.IIpcEventCallback
 import com.falcon.ipc.aidl.IIpcHost
 import com.falcon.ipc.protocol.ErrorCode
 import com.falcon.ipc.protocol.IpcEnvelope
+import com.falcon.ipc.protocol.IpcSerializer
 import com.falcon.ipc.security.SignatureGuard
+import com.falcon.ipc.transport.SharedMemoryTransport
+import com.falcon.ipc.transport.TransportSelector
 import com.falcon.ipc.util.CallerResolver
 import com.falcon.ipc.util.FalconLogger
 import java.util.concurrent.ConcurrentHashMap
@@ -21,6 +25,8 @@ class IpcHostService : Service() {
     private lateinit var callerResolver: CallerResolver
     private lateinit var serviceRegistry: ServiceRegistry
     private lateinit var messageRouter: MessageRouter
+    private lateinit var sharedMemoryTransport: SharedMemoryTransport
+    private var threshold: Int = 64 * 1024
     private val eventSubscribers = ConcurrentHashMap<String, CopyOnWriteArrayList<IIpcEventCallback>>()
 
     override fun onCreate() {
@@ -36,6 +42,8 @@ class IpcHostService : Service() {
         signatureGuard = falconManager.signatureGuard
         callerResolver = falconManager.callerResolver
         messageRouter = falconManager.messageRouter
+        sharedMemoryTransport = falconManager.sharedMemoryTransport
+        threshold = falconManager.sharedMemoryThreshold
     }
 
     override fun onBind(intent: Intent?): IBinder? {
@@ -58,8 +66,16 @@ class IpcHostService : Service() {
             val callerProcess = callerResolver.resolve(callingPid)
             return try {
                 val result = messageRouter.handleLocal(request, callerProcess, callingPid)
-                IpcEnvelope.response(request.requestId,
-                    com.falcon.ipc.protocol.IpcSerializer.serializeResult(result))
+                val resultBytes = IpcSerializer.serializeResult(result)
+                val response = if (TransportSelector.shouldUseSharedMemory(resultBytes.size, threshold)
+                    && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                    val shm = sharedMemoryTransport.writeToShared(resultBytes)
+                    if (shm != null) IpcEnvelope(requestId = request.requestId, largePayload = true, sharedMemory = shm)
+                    else IpcEnvelope.response(request.requestId, resultBytes)
+                } else {
+                    IpcEnvelope.response(request.requestId, resultBytes)
+                }
+                response
             } catch (e: SecurityException) {
                 IpcEnvelope.error(ErrorCode.PERMISSION_DENIED, e.message ?: "Denied", request.requestId)
             } catch (e: IllegalStateException) {
