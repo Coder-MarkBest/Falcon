@@ -81,4 +81,20 @@ class IpcSerializerTest {
         assertEquals(123456789L, result[0])
         assertEquals(2.5f, result[1] as Float, 0.001f)
     }
+
+    @Test
+    fun `unsupported type throws instead of silently stringifying`() {
+        class Weird(val x: Int)
+        assertThrows(IllegalArgumentException::class.java) {
+            IpcSerializer.serializeArgs(arrayOf(Weird(1)))
+        }
+    }
+
+    @Test
+    fun `byte array round trips`() {
+        val original = byteArrayOf(1, 2, 3, 4, 5)
+        val bytes = IpcSerializer.serializeArgs(arrayOf(original))
+        val out = IpcSerializer.deserializeArgs(bytes, arrayOf(ByteArray::class.java))
+        assertArrayEquals(original, out[0] as ByteArray)
+    }
 }
