@@ -1,5 +1,7 @@
 package com.falcon.ipc.monitor
 
+import com.falcon.ipc.core.DiagnosticEntry
+import com.falcon.ipc.core.DiagnosticsManager
 import com.falcon.ipc.util.FalconLogger
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -17,6 +19,9 @@ class MonitorFacade {
     private var config = MonitorConfig()
     private val statsMap = ConcurrentHashMap<String, IpcCallStats>()
     private val _statsFlow = MutableStateFlow<List<IpcCallStats>>(emptyList())
+    private val diagnostics = DiagnosticsManager()
+
+    fun getDiagnostics(): DiagnosticsManager = diagnostics
 
     fun setLevel(level: MonitorLevel) {
         this.level = level
@@ -50,6 +55,19 @@ class MonitorFacade {
         }
 
         _statsFlow.value = statsMap.values.toList()
+
+        // Also record to diagnostics
+        if (diagnostics.isEnabled()) {
+            diagnostics.record(DiagnosticEntry(
+                timestamp = System.currentTimeMillis(),
+                serviceKey = service,
+                method = method,
+                latencyMs = latencyMs,
+                success = success,
+                transportType = "BINDER",
+                requestId = ""
+            ))
+        }
     }
 
     fun getStats(): List<IpcCallStats> = statsMap.values.toList()

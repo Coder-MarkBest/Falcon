@@ -35,18 +35,21 @@ fun <T> Flow<T>.throttle(periodMs: Long): Flow<T> = channelFlow {
  * When disconnected, emits IpcEvent.Disconnected.
  * When reconnected, emits IpcEvent.Reconnected then resumes data.
  */
-fun <T> Flow<T>.withConnectionState(falconManager: FalconManager): Flow<IpcEvent<T>> = flow {
-    var connected = true
+fun <T> Flow<T>.withConnectionState(falconManager: FalconManager): Flow<IpcEvent<T>> = channelFlow {
+    val upstream = this@withConnectionState
 
     // Listen for connection state changes
-    val stateJob = kotlinx.coroutines.currentCoroutineContext()
-
     falconManager.onConnectionStateChanged { state, _ ->
-        // State changes handled by merge below
+        when (state) {
+            IpcState.DISCONNECTED -> trySend(IpcEvent.Disconnected)
+            IpcState.CONNECTED -> trySend(IpcEvent.Reconnected)
+            else -> {}
+        }
     }
 
-    collect { value ->
-        emit(IpcEvent.Data(value))
+    // Forward data events
+    upstream.collect { value ->
+        send(IpcEvent.Data(value))
     }
 }
 

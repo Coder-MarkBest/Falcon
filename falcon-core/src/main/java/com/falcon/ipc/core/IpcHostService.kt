@@ -31,15 +31,12 @@ class IpcHostService : Service() {
             Falcon.getInstance()
         } catch (e: IllegalStateException) {
             FalconLogger.e("Host", "Falcon not initialized", e)
+            stopSelf()
             return
         }
         serviceRegistry = falconManager.serviceRegistry
         signatureGuard = SignatureGuard().apply { init(this@IpcHostService) }
-
-        val monitor = MonitorFacade()
-        val permissionChecker = PermissionChecker(emptyMap())
-        val rateLimiter = RateLimiter()
-        messageRouter = MessageRouter(serviceRegistry, monitor, permissionChecker, rateLimiter)
+        messageRouter = falconManager.messageRouter
     }
 
     override fun onBind(intent: Intent?): IBinder? {
@@ -89,7 +86,7 @@ class IpcHostService : Service() {
             try {
                 callback.onEvent(event)
             } catch (e: Exception) {
-                FalconLogger.w("Host", "Failed to deliver event to subscriber")
+                FalconLogger.w("Host", "Failed to deliver event to subscriber: ${e.message}")
             }
         }
     }

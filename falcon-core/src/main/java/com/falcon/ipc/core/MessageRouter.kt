@@ -1,5 +1,6 @@
 package com.falcon.ipc.core
 
+import com.falcon.ipc.monitor.IpcInterceptor
 import com.falcon.ipc.monitor.MonitorFacade
 import com.falcon.ipc.protocol.IpcEnvelope
 import com.falcon.ipc.protocol.IpcSerializer
@@ -12,11 +13,22 @@ class MessageRouter(
     private val registry: ServiceRegistry,
     private val monitor: MonitorFacade,
     private val permissionChecker: PermissionChecker,
-    private val rateLimiter: RateLimiter
+    private val rateLimiter: RateLimiter,
+    private val circuitBreaker: CircuitBreaker = CircuitBreaker()
 ) {
+    private var interceptors: List<IpcInterceptor> = emptyList()
+
+    fun setInterceptors(interceptors: List<IpcInterceptor>) {
+        this.interceptors = interceptors
+    }
+
     fun handleLocal(envelope: IpcEnvelope, callerProcess: String): Any? {
         if (!permissionChecker.check(envelope.serviceKey, callerProcess)) {
             throw SecurityException("Permission denied: $callerProcess → ${envelope.serviceKey}")
+        }
+
+        if (!circuitBreaker.allowCall(envelope.serviceKey)) {
+            throw IllegalStateException("Circuit open for ${envelope.serviceKey}")
         }
 
         val service = registry.getService(envelope.serviceKey)
@@ -37,11 +49,13 @@ class MessageRouter(
         } catch (e: Exception) {
             monitor.recordCall(envelope.serviceKey, envelope.method, false,
                 System.currentTimeMillis() - startTime)
+            circuitBreaker.recordFailure(envelope.serviceKey)
             throw e
         }
 
         monitor.recordCall(envelope.serviceKey, envelope.method, true,
             System.currentTimeMillis() - startTime)
+        circuitBreaker.recordSuccess(envelope.serviceKey)
         return result
     }
 

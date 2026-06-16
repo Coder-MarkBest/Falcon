@@ -142,7 +142,7 @@ object IpcSerializer {
                 val classLoader = type.classLoader ?: Thread.currentThread().contextClassLoader
                 parcel.readParcelable(classLoader)
             }
-            else -> null
+            else -> throw IllegalStateException("Unknown type tag: $typeTag")
         }
     }
 }

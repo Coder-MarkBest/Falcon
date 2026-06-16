@@ -14,11 +14,15 @@ import com.falcon.ipc.transport.BinderTransport
 import com.falcon.ipc.util.FalconLogger
 import com.falcon.ipc.util.ProcessUtils
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicLong
 
 data class PeerConnection(
     val processName: String,
     val transport: BinderTransport,
-    val binder: IBinder
+    val binder: IBinder,
+    val deathRecipient: IBinder.DeathRecipient,
+    val serviceConnection: ServiceConnection
 )
 
 enum class IpcState { CONNECTED, DISCONNECTED, RECONNECTING }
@@ -28,8 +32,8 @@ class PeerManager(
     private val registryUri: Uri
 ) {
     private val connections = ConcurrentHashMap<String, PeerConnection>()
-    private val stateCallbacks = mutableListOf<(IpcState, String) -> Unit>()
-    private var reconnectDelayMs = 500L
+    private val stateCallbacks = CopyOnWriteArrayList<(IpcState, String) -> Unit>()
+    private val reconnectDelayMs = AtomicLong(500)
     private val maxReconnectDelayMs = 30_000L
     private val handler = Handler(Looper.getMainLooper())
 
@@ -48,7 +52,9 @@ class PeerManager(
     fun stop() {
         context.contentResolver.unregisterContentObserver(registryObserver)
         connections.values.forEach { conn ->
-            try { conn.binder.unlinkToDeath(createDeathRecipient(conn.processName), 0) }
+            try { conn.binder.unlinkToDeath(conn.deathRecipient, 0) }
+            catch (_: Exception) {}
+            try { context.unbindService(conn.serviceConnection) }
             catch (_: Exception) {}
         }
         connections.clear()
@@ -92,16 +98,23 @@ class PeerManager(
             putExtra("target_process", processName)
         }
 
+        val deathRecipient = IBinder.DeathRecipient {
+            FalconLogger.w("Peer", "$processName died")
+            connections.remove(processName)
+            notifyState(IpcState.DISCONNECTED, processName)
+            scheduleReconnect(processName)
+        }
+
         val connection = object : ServiceConnection {
             override fun onServiceConnected(name: ComponentName, binder: IBinder) {
                 val host = IIpcHost.Stub.asInterface(binder)
                 val transport = BinderTransport(host)
-                val peer = PeerConnection(processName, transport, binder)
+                val peer = PeerConnection(processName, transport, binder, deathRecipient, this)
                 connections[processName] = peer
 
-                binder.linkToDeath(createDeathRecipient(processName), 0)
+                binder.linkToDeath(deathRecipient, 0)
 
-                reconnectDelayMs = 500L
+                reconnectDelayMs.set(500)
                 notifyState(IpcState.CONNECTED, processName)
                 FalconLogger.d("Peer", "Connected to $processName")
             }
@@ -121,22 +134,14 @@ class PeerManager(
         }
     }
 
-    private fun createDeathRecipient(processName: String): IBinder.DeathRecipient {
-        return IBinder.DeathRecipient {
-            FalconLogger.w("Peer", "$processName died")
-            connections.remove(processName)
-            notifyState(IpcState.DISCONNECTED, processName)
-            scheduleReconnect(processName)
-        }
-    }
-
     private fun scheduleReconnect(processName: String) {
         notifyState(IpcState.RECONNECTING, processName)
+        val delay = reconnectDelayMs.get()
         handler.postDelayed({
-            FalconLogger.d("Peer", "Reconnecting to $processName (delay=${reconnectDelayMs}ms)")
+            FalconLogger.d("Peer", "Reconnecting to $processName (delay=${delay}ms)")
             bindPeer(processName)
-            reconnectDelayMs = (reconnectDelayMs * 2).coerceAtMost(maxReconnectDelayMs)
-        }, reconnectDelayMs)
+            reconnectDelayMs.updateAndGet { (it * 2).coerceAtMost(maxReconnectDelayMs) }
+        }, delay)
     }
 
     private fun notifyState(state: IpcState, processName: String) {

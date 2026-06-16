@@ -42,7 +42,8 @@ class EventBus {
             try {
                 callback.onEvent(envelope)
             } catch (e: Exception) {
-                FalconLogger.w("EventBus", "Failed to deliver event to remote subscriber: ${e.message}")
+                FalconLogger.w("EventBus", "Removing dead subscriber for $eventKey")
+                remoteSubscribers[eventKey]?.remove(callback)
             }
         }
     }

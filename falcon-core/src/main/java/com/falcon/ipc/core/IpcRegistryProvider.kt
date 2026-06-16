@@ -31,6 +31,10 @@ class IpcRegistryProvider : ContentProvider() {
         sortOrder: String?
     ): Cursor? {
         enforceSignature()
+        // Whitelist allowed selection patterns
+        if (selection != null && !selection.matches(Regex("^[a-z_= ?]+$"))) {
+            throw IllegalArgumentException("Invalid selection")
+        }
         val db = dbHelper.readableDatabase
         return db.query(TABLE_SERVICES, projection, selection, selectionArgs, null, null, sortOrder)
     }

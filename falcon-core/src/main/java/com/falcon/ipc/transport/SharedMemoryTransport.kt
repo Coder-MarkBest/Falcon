@@ -48,9 +48,13 @@ class SharedMemoryTransport(
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O_MR1) return false
 
         val buffer: ByteBuffer = shm.mapReadWrite()
-        buffer.putInt(data.size)
-        buffer.put(data)
-        buffer.flip()
+        try {
+            buffer.putInt(data.size)
+            buffer.put(data)
+            buffer.flip()
+        } finally {
+            safeUnmap(shm, buffer)
+        }
         return true
     }
 
@@ -59,10 +63,27 @@ class SharedMemoryTransport(
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O_MR1) return null
 
         val buffer: ByteBuffer = shm.mapReadOnly()
-        val size = buffer.getInt()
-        val data = ByteArray(size)
-        buffer.get(data)
-        return data
+        try {
+            val size = buffer.getInt()
+            if (size < 0 || size > maxAllocationSize) return null
+            val data = ByteArray(size)
+            buffer.get(data)
+            return data
+        } finally {
+            safeUnmap(shm, buffer)
+        }
+    }
+
+    /**
+     * Unmap a SharedMemory buffer. Uses reflection since unmap() is @SystemApi.
+     */
+    private fun safeUnmap(shm: SharedMemory, buffer: ByteBuffer) {
+        try {
+            val method = SharedMemory::class.java.getDeclaredMethod("unmap", ByteBuffer::class.java)
+            method.invoke(shm, buffer)
+        } catch (_: Exception) {
+            // unmap not available; buffer will be reclaimed by GC
+        }
     }
 
     fun release(memoryId: String) {

@@ -8,10 +8,11 @@ data class AccessRule(
 )
 
 class PermissionChecker(
-    private val accessRules: Map<String, AccessRule>
+    private val accessRules: Map<String, AccessRule>,
+    private val defaultAllow: Boolean = true
 ) {
     fun check(serviceKey: String, callerProcess: String): Boolean {
-        val rule = accessRules[serviceKey] ?: return true
+        val rule = accessRules[serviceKey] ?: return defaultAllow
 
         if (rule.denyList.contains(callerProcess)) {
             FalconLogger.w("Security", "Denied: $callerProcess → $serviceKey (denyList)")

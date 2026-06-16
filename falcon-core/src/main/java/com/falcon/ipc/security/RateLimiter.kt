@@ -13,14 +13,16 @@ class RateLimiter(
 
     fun tryAcquire(callerPid: Int): Boolean {
         val concurrent = concurrentCalls.getOrPut(callerPid) { AtomicInteger(0) }
-        if (concurrent.get() >= maxConcurrentCalls) {
+        val newConcurrent = concurrent.incrementAndGet()
+        if (newConcurrent > maxConcurrentCalls) {
+            concurrent.decrementAndGet()
             FalconLogger.w("Security", "Concurrent limit: PID=$callerPid")
             return false
         }
-        concurrent.incrementAndGet()
 
         val counter = callCounters.getOrPut(callerPid) { AtomicInteger(0) }
         if (counter.incrementAndGet() > maxCallsPerSecond) {
+            counter.decrementAndGet()
             concurrent.decrementAndGet()
             FalconLogger.w("Security", "Rate limit: PID=$callerPid")
             return false

@@ -26,7 +26,7 @@ class FalconManager internal constructor(
         config.security.rateLimitPerSecond,
         config.security.maxConcurrentCalls
     )
-    private val messageRouter = MessageRouter(
+    internal val messageRouter = MessageRouter(
         serviceRegistry, monitor, permissionChecker, rateLimiter
     )
     private val sharedMemoryTransport = SharedMemoryTransport(config.transport.maxSharedMemorySize)
@@ -39,6 +39,7 @@ class FalconManager internal constructor(
 
     fun start() {
         FalconLogger.enabled = true
+        messageRouter.setInterceptors(config.interceptors)
         peerManager = PeerManager(context, registryUri).also { it.start() }
         FalconLogger.d("Falcon", "Started in ${ProcessUtils.getCurrentProcessName(context)}")
     }

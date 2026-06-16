@@ -7,14 +7,16 @@ import kotlin.reflect.KClass
 
 object Falcon {
 
+    @Volatile
     private var instance: FalconManager? = null
 
     fun init(context: Context, block: FalconConfig.() -> Unit = {}): FalconManager {
-        val config = FalconConfig().apply(block)
-        val manager = FalconManager(context.applicationContext, config)
-        manager.start()
-        instance = manager
-        return manager
+        return instance ?: synchronized(this) {
+            instance ?: FalconManager(context.applicationContext, FalconConfig().apply(block)).also {
+                it.start()
+                instance = it
+            }
+        }
     }
 
     fun getInstance(): FalconManager {

@@ -1,6 +1,8 @@
 package com.falcon.ipc.core
 
 import com.falcon.ipc.util.FalconLogger
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CopyOnWriteArrayList
 
 data class OtaVersionInfo(
     val serviceKey: String,
@@ -21,9 +23,9 @@ data class OtaVersionInfo(
 }
 
 class OtaCompatManager {
-    private val localVersions = mutableMapOf<String, ServiceVersion>()
-    private val remoteVersions = mutableMapOf<String, ServiceVersion>()
-    private val downgradeCallbacks = mutableListOf<(String, ServiceVersion) -> Unit>()
+    private val localVersions = ConcurrentHashMap<String, ServiceVersion>()
+    private val remoteVersions = ConcurrentHashMap<String, ServiceVersion>()
+    private val downgradeCallbacks = CopyOnWriteArrayList<(String, ServiceVersion) -> Unit>()
 
     fun registerLocalVersion(serviceKey: String, version: ServiceVersion) {
         localVersions[serviceKey] = version
