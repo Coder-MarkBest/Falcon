@@ -61,8 +61,8 @@ falcon-benchmark (Android app — compares Falcon vs AIDL vs Messenger vs Conten
 - Exponential backoff reconnection (500ms → 30s max)
 
 ### Security model
-- Signature verification: enforced on bind/invoke (NOTE: currently same-signature-only — see audit; needs a trusted-signature allowlist to support third-party callers)
-- Permission control: @IpcPermission annotation + DSL access rules
+- Signature verification: trusted-signature allowlist — caller admitted iff every package in its UID is signed by a cert in `SecurityConfig.trustedSignatures` (SHA-256 hex) ∪ the app's own signature. Fail-closed when unset (only same-signature callers). Verified on bind/invoke via `Binder.getCallingUid()`.
+- Permission control: @IpcPermission annotation + DSL access rules, keyed by **caller package name** (resolved from the Binder UID)
 - Rate limiting: per-PID sliding window, enforced in MessageRouter on every call
 
 ## Annotations (falcon-annotations)
