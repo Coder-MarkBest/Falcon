@@ -31,6 +31,7 @@ enum class IpcState { CONNECTED, DISCONNECTED, RECONNECTING }
 class PeerManager(
     private val context: Context,
     private val registryUri: Uri,
+    private val threadPool: IpcThreadPool,
     private val sharedMemoryTransport: SharedMemoryTransport? = null
 ) {
     private val connections = ConcurrentHashMap<String, PeerConnection>()
@@ -71,27 +72,30 @@ class PeerManager(
     }
 
     private fun refreshPeers() {
+        threadPool.submit {
+            val names = queryPeerProcessNames()
+            handler.post {
+                names.forEach { name ->
+                    if (!connections.containsKey(name)) bindPeer(name)
+                }
+            }
+        }
+    }
+
+    private fun queryPeerProcessNames(): Set<String> {
         val cursor = context.contentResolver.query(
             registryUri, null,
             "process_name != ?",
             arrayOf(ProcessUtils.getCurrentProcessName(context)),
             null
-        ) ?: return
-
-        val processNames = mutableSetOf<String>()
+        ) ?: return emptySet()
+        val names = mutableSetOf<String>()
         cursor.use {
             val colIdx = it.getColumnIndex("process_name")
-            if (colIdx < 0) return
-            while (it.moveToNext()) {
-                processNames.add(it.getString(colIdx))
-            }
+            if (colIdx < 0) return emptySet()
+            while (it.moveToNext()) names.add(it.getString(colIdx))
         }
-
-        processNames.forEach { name ->
-            if (!connections.containsKey(name)) {
-                bindPeer(name)
-            }
-        }
+        return names
     }
 
     private fun bindPeer(processName: String) {

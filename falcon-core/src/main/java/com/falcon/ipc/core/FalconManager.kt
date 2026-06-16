@@ -47,12 +47,18 @@ class FalconManager internal constructor(
         "content://${context.packageName}.falcon.registry/services"
     )
 
+    internal val threadPool = IpcThreadPool()
+
     private var peerManager: PeerManager? = null
 
     fun start() {
         FalconLogger.enabled = true
         messageRouter.setInterceptors(config.interceptors)
-        peerManager = PeerManager(context, registryUri, sharedMemoryTransport = sharedMemoryTransport).also { it.start() }
+        peerManager = PeerManager(
+            context, registryUri,
+            threadPool = threadPool,
+            sharedMemoryTransport = sharedMemoryTransport
+        ).also { it.start() }
         FalconLogger.d("Falcon", "Started in ${ProcessUtils.getCurrentProcessName(context)}")
     }
 
@@ -104,6 +110,7 @@ class FalconManager internal constructor(
 
     fun stop() {
         peerManager?.stop()
+        threadPool.shutdown()
         serviceRegistry.unregisterAll()
         FalconLogger.d("Falcon", "Stopped")
     }
@@ -111,6 +118,7 @@ class FalconManager internal constructor(
     fun shutdown(timeoutMs: Long = 5000L) {
         FalconLogger.d("Falcon", "Shutting down (timeout=${timeoutMs}ms)...")
         peerManager?.stop()
+        threadPool.shutdown()
         serviceRegistry.unregisterAll()
         Falcon.instance = null
         FalconLogger.d("Falcon", "Shutdown complete")
