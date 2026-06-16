@@ -27,7 +27,8 @@ data class SecurityConfig(
     var signatureVerification: Boolean = true,
     var accessRules: Map<String, AccessRule> = emptyMap(),
     var rateLimitPerSecond: Int = 1000,
-    var maxConcurrentCalls: Int = 50
+    var maxConcurrentCalls: Int = 50,
+    var trustedSignatures: Set<String> = emptySet()
 )
 
 class FalconConfig {
