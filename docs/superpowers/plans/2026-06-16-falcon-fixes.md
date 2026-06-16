@@ -10,7 +10,7 @@
 
 **Spec:** `docs/superpowers/specs/2026-06-16-falcon-fixes-design.md`
 
-**Test command:** `./gradlew :falcon-core:test`
+**Test command:** `./gradlew :falcon-core:testDebugUnitTest`
 
 ---
 
@@ -106,7 +106,7 @@ fun `concurrent limit enforced and released`() {
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `./gradlew :falcon-core:test --tests "com.falcon.ipc.security.RateLimiterTest"`
+Run: `./gradlew :falcon-core:testDebugUnitTest --tests "com.falcon.ipc.security.RateLimiterTest"`
 Expected: FAIL (constructor has no `clock` param / sliding behavior absent)
 
 - [ ] **Step 3: Implement sliding window**
@@ -160,7 +160,7 @@ class RateLimiter(
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `./gradlew :falcon-core:test --tests "com.falcon.ipc.security.RateLimiterTest"`
+Run: `./gradlew :falcon-core:testDebugUnitTest --tests "com.falcon.ipc.security.RateLimiterTest"`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
@@ -262,7 +262,7 @@ If `EchoService`/`EchoServiceImpl` test fixtures don't exist, define them in the
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `./gradlew :falcon-core:test --tests "com.falcon.ipc.core.MessageRouterTest"`
+Run: `./gradlew :falcon-core:testDebugUnitTest --tests "com.falcon.ipc.core.MessageRouterTest"`
 Expected: FAIL (handleLocal signature has no callerPid; no `__check_service__`; no rate limiting)
 
 - [ ] **Step 3: Implement**
@@ -360,7 +360,7 @@ class MessageRouter(
 
 - [ ] **Step 5: Run tests**
 
-Run: `./gradlew :falcon-core:test --tests "com.falcon.ipc.core.MessageRouterTest" --tests "com.falcon.ipc.core.BatchRequestTest"`
+Run: `./gradlew :falcon-core:testDebugUnitTest --tests "com.falcon.ipc.core.MessageRouterTest" --tests "com.falcon.ipc.core.BatchRequestTest"`
 Expected: PASS
 
 - [ ] **Step 6: Commit**
@@ -432,9 +432,9 @@ git commit -m "fix: use real Binder caller PID for permission checks; reuse Sign
 - Modify: `falcon-core/src/main/java/com/falcon/ipc/protocol/IpcSerializer.kt`
 - Test: `falcon-core/src/test/java/com/falcon/ipc/protocol/IpcSerializerTest.kt`
 
-NOTE: `IpcSerializer` uses `android.os.Parcel`. If existing `IpcSerializerTest` runs on JVM it must be using Robolectric or the tests are instrumented. Check the existing test's runner first. If it is NOT JVM-runnable, skip Steps 1-2 (writing failing test) and instead verify by `./gradlew :falcon-core:test` not regressing, plus code review.
+NOTE: `IpcSerializer` uses `android.os.Parcel`. The existing `IpcSerializerTest` is annotated `@RunWith(RobolectricTestRunner::class)` (confirmed) — Parcel works on JVM via Robolectric. Add the new tests to that existing class so they inherit the Robolectric runner.
 
-- [ ] **Step 1: Write failing test (if Parcel is available in the test runner)**
+- [ ] **Step 1: Write failing test (add to the existing `@RunWith(RobolectricTestRunner::class)` class)**
 
 ```kotlin
 @Test
@@ -456,7 +456,7 @@ fun `byte array round trips`() {
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `./gradlew :falcon-core:test --tests "com.falcon.ipc.protocol.IpcSerializerTest"`
+Run: `./gradlew :falcon-core:testDebugUnitTest --tests "com.falcon.ipc.protocol.IpcSerializerTest"`
 Expected: FAIL on the unsupported-type test (currently stringifies)
 
 - [ ] **Step 3: Implement**
@@ -476,7 +476,7 @@ Remove the now-unused `json`/kotlinx.serialization imports if nothing else uses 
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `./gradlew :falcon-core:test --tests "com.falcon.ipc.protocol.IpcSerializerTest"`
+Run: `./gradlew :falcon-core:testDebugUnitTest --tests "com.falcon.ipc.protocol.IpcSerializerTest"`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
@@ -517,7 +517,7 @@ class TransportSelectorTest {
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `./gradlew :falcon-core:test --tests "com.falcon.ipc.transport.TransportSelectorTest"`
+Run: `./gradlew :falcon-core:testDebugUnitTest --tests "com.falcon.ipc.transport.TransportSelectorTest"`
 Expected: FAIL (unresolved reference TransportSelector)
 
 - [ ] **Step 3: Implement**
@@ -533,7 +533,7 @@ object TransportSelector {
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `./gradlew :falcon-core:test --tests "com.falcon.ipc.transport.TransportSelectorTest"`
+Run: `./gradlew :falcon-core:testDebugUnitTest --tests "com.falcon.ipc.transport.TransportSelectorTest"`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
@@ -723,7 +723,7 @@ Expected: BUILD SUCCESSFUL
 
 - [ ] **Step 6: Run full core test suite (no regressions)**
 
-Run: `./gradlew :falcon-core:test`
+Run: `./gradlew :falcon-core:testDebugUnitTest`
 Expected: PASS
 
 - [ ] **Step 7: Commit**
@@ -781,7 +781,7 @@ Expected: BUILD SUCCESSFUL
 
 - [ ] **Step 4: Run IpcThreadPool tests (no regression)**
 
-Run: `./gradlew :falcon-core:test --tests "com.falcon.ipc.core.IpcThreadPoolTest"`
+Run: `./gradlew :falcon-core:testDebugUnitTest --tests "com.falcon.ipc.core.IpcThreadPoolTest"`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
@@ -816,7 +816,7 @@ Expected: BUILD SUCCESSFUL
 
 - [ ] **Step 4: Run full suite**
 
-Run: `./gradlew :falcon-core:test`
+Run: `./gradlew :falcon-core:testDebugUnitTest`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
@@ -834,7 +834,7 @@ git commit -m "fix: reconnect dedup, remove optimistic proxy, log swallowed exce
 
 - [ ] **Step 1: Full core test suite**
 
-Run: `./gradlew :falcon-core:test`
+Run: `./gradlew :falcon-core:testDebugUnitTest`
 Expected: PASS (all)
 
 - [ ] **Step 2: Full build (all modules incl. KSP + benchmark)**
