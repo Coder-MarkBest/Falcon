@@ -20,7 +20,8 @@
       "Bash(JAVA_HOME=/Library/Java/JavaVirtualMachines/zulu-17.jdk/Contents/Home ./gradlew :falcon-core:testDebugUnitTest --info)",
       "Bash(JAVA_HOME=/Library/Java/JavaVirtualMachines/zulu-17.jdk/Contents/Home ./gradlew :falcon-core:testDebugUnitTest --rerun)",
       "Bash(JAVA_HOME=/Library/Java/JavaVirtualMachines/zulu-17.jdk/Contents/Home ./gradlew :falcon-core:testDebugUnitTest --stacktrace)",
-      "Bash(JAVA_HOME=/Library/Java/JavaVirtualMachines/zulu-17.jdk/Contents/Home ./gradlew :falcon-core:testDebugUnitTest --tests \"com.falcon.ipc.core.EventBusTest\")"
+      "Bash(JAVA_HOME=/Library/Java/JavaVirtualMachines/zulu-17.jdk/Contents/Home ./gradlew :falcon-core:testDebugUnitTest --tests \"com.falcon.ipc.core.EventBusTest\")",
+      "Bash(JAVA_HOME=/Library/Java/JavaVirtualMachines/zulu-17.jdk/Contents/Home ./gradlew :falcon-core:testDebugUnitTest --tests \"com.falcon.ipc.runtime.FlowExtensionsTest.throttle limits emission rate\")"
     ]
   }
 }
