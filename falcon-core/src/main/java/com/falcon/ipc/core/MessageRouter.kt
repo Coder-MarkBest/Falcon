@@ -24,18 +24,19 @@ class MessageRouter(
     }
 
     fun handleLocal(envelope: IpcEnvelope, callerProcess: String, callerPid: Int): Any? {
-        if (envelope.method == "__check_service__") {
-            val key = String(envelope.args ?: ByteArray(0))
-            return registry.getService(key) != null
-        }
-
-        if (!permissionChecker.check(envelope.serviceKey, callerProcess)) {
-            throw SecurityException("Permission denied: $callerProcess → ${envelope.serviceKey}")
-        }
         if (!rateLimiter.tryAcquire(callerPid)) {
             throw IllegalStateException("Rate limit exceeded for PID=$callerPid")
         }
         try {
+            if (envelope.method == "__check_service__") {
+                val key = String(envelope.args ?: ByteArray(0))
+                if (!permissionChecker.check(key, callerProcess)) return false
+                return registry.getService(key) != null
+            }
+
+            if (!permissionChecker.check(envelope.serviceKey, callerProcess)) {
+                throw SecurityException("Permission denied: $callerProcess → ${envelope.serviceKey}")
+            }
             if (!circuitBreaker.allowCall(envelope.serviceKey)) {
                 throw IllegalStateException("Circuit open for ${envelope.serviceKey}")
             }
