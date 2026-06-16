@@ -13,7 +13,8 @@
       "Bash(java *)",
       "Bash(/Users/xianxiaoli/Library/Java/JavaVirtualMachines/jbr-21.0.6/Contents/Home/bin/jlink *)",
       "Bash(/usr/libexec/java_home *)",
-      "Bash(export JAVA_HOME=/Library/Java/JavaVirtualMachines/zulu-17.jdk/Contents/Home)"
+      "Bash(export JAVA_HOME=/Library/Java/JavaVirtualMachines/zulu-17.jdk/Contents/Home)",
+      "Bash(git rm *)"
     ]
   }
 }
