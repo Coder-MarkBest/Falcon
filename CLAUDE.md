@@ -44,8 +44,8 @@ falcon-benchmark (Android app — compares Falcon vs AIDL vs Messenger vs Conten
 
 ### Core design: Binder + SharedMemory hybrid transport
 - **< 64KB** data → Binder direct transfer (kernel-level, lowest latency)
-- **≥ 64KB** data → SharedMemory zero-copy (HMAC token-secured, PID-bound)
-- MessageRouter auto-selects transport based on payload size
+- **≥ 64KB** data → SharedMemory zero-copy (the `SharedMemory` is Parcelable and travels inside `IpcEnvelope`; the kernel dups the FD to the receiver — no token/registry indirection)
+- Transport is selected by payload size via `TransportSelector.shouldUseSharedMemory`, applied on both request (ProxyFactory) and response (IpcHostService) paths
 
 ### Key packages in falcon-core
 - `com.falcon.ipc` — Falcon entry point, FalconConfig DSL
@@ -64,8 +64,8 @@ falcon-benchmark (Android app — compares Falcon vs AIDL vs Messenger vs Conten
 ### Security model
 - Signature verification: mandatory, cannot be disabled
 - Permission control: @IpcPermission annotation + DSL access rules
-- SharedMemory: HMAC-signed one-time tokens bound to caller PID
-- Rate limiting: per-PID, configurable thresholds
+- SharedMemory: secured by kernel FD passing (dup'd per Binder transaction) + the mandatory signature check on bind/invoke
+- Rate limiting: per-PID sliding window, enforced in MessageRouter on every call
 
 ## Annotations (falcon-annotations)
 

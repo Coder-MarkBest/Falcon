@@ -106,7 +106,9 @@ object ProxyFactory {
             val result = try {
                 transport.invoke(envelope)
             } finally {
-                requestShm?.close()
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O_MR1) {
+                    requestShm?.close()
+                }
             }
 
             return when (result) {

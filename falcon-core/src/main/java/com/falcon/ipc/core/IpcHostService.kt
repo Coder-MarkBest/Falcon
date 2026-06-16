@@ -46,6 +46,9 @@ class IpcHostService : Service() {
         threshold = falconManager.sharedMemoryThreshold
     }
 
+    // getCallingUid() in onBind is best-effort early rejection; the authoritative
+    // per-call signature check runs in invoke() within the Binder transaction frame.
+    @android.annotation.SuppressLint("BinderGetCallingInMainThread")
     override fun onBind(intent: Intent?): IBinder? {
         val callingUid = Binder.getCallingUid()
         if (!signatureGuard.verify(this, callingUid)) {
