@@ -38,6 +38,7 @@ class FalconConfig {
     var security = SecurityConfig()
     var monitorLevel: MonitorLevel = MonitorLevel.NONE
     internal val interceptors = mutableListOf<IpcInterceptor>()
+    internal val generatedRegistries = mutableListOf<com.falcon.ipc.runtime.FalconGeneratedRegistry>()
 
     fun transport(block: TransportConfig.() -> Unit) { transport.block() }
     fun reconnect(block: ReconnectConfig.() -> Unit) { reconnect.block() }
@@ -46,5 +47,9 @@ class FalconConfig {
 
     fun addInterceptor(interceptor: IpcInterceptor) {
         interceptors.add(interceptor)
+    }
+
+    fun generated(registry: com.falcon.ipc.runtime.FalconGeneratedRegistry) {
+        generatedRegistries.add(registry)
     }
 }

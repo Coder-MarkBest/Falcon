@@ -54,7 +54,12 @@ class FalconManager internal constructor(
     }
 
     fun <T : IpcService> register(serviceClass: KClass<T>, impl: T) {
-        serviceRegistry.register(serviceClass, impl)
+        serviceRegistry.register(serviceClass, impl)   // legacy storage (unchanged)
+        val key = serviceClass.qualifiedName
+        if (key != null) {
+            val factory = config.generatedRegistries.firstNotNullOfOrNull { it.dispatcherFactories[key] }
+            if (factory != null) serviceRegistry.registerDispatcher(key, factory(impl))
+        }
         FalconLogger.i("Falcon", "Service registered: ${serviceClass.qualifiedName}")
     }
 
@@ -82,7 +87,11 @@ class FalconManager internal constructor(
                         IpcSerializer.deserializeResult(data, Boolean::class.javaObjectType) == true
                     } else false
                     if (hasService) {
-                        return ProxyFactory.create(serviceClass.java, key, peer.transport)
+                        val factory = config.generatedRegistries
+                            .firstNotNullOfOrNull { it.proxyFactories[key] }
+                            ?: return null  // no generated proxy -> cannot build a typed remote proxy
+                        @Suppress("UNCHECKED_CAST")
+                        return factory(peer.transport, key) as T
                     }
                 }
             } catch (e: Exception) {
