@@ -36,6 +36,12 @@ class MessageRouter(
             if (!permissionChecker.check(envelope.serviceKey, callerPackage)) {
                 throw SecurityException("Permission denied: $callerPackage → ${envelope.serviceKey}")
             }
+
+            val dispatcher = registry.getDispatcher(envelope.serviceKey)
+            if (dispatcher != null && envelope.methodId != 0) {
+                return dispatcher.dispatch(envelope.methodId, envelope.argsBundle ?: android.os.Bundle())
+            }
+
             val service = registry.getService(envelope.serviceKey)
                 ?: throw IllegalStateException("Service not found: ${envelope.serviceKey}")
 
