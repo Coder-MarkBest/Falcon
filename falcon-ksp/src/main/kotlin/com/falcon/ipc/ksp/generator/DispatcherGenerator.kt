@@ -1,6 +1,5 @@
 package com.falcon.ipc.ksp.generator
 
-import com.falcon.ipc.annotations.MethodId
 import com.google.devtools.ksp.processing.CodeGenerator
 import com.google.devtools.ksp.processing.Dependencies
 import com.google.devtools.ksp.processing.KSPLogger
@@ -35,8 +34,7 @@ object DispatcherGenerator {
         for (m in methods) {
             val mName = m.simpleName.asString()
             val paramTypes = m.parameters.map { it.type.resolve() }
-            val paramQNs = paramTypes.map { it.declaration.qualifiedName?.asString() ?: "?" }
-            val id = MethodId.signatureHash(mName, paramQNs)
+            val id = MethodIds.of(m)
 
             if (!seen.add(id)) {
                 logger.error("methodId collision in $ifaceName for $mName")
@@ -47,7 +45,7 @@ object DispatcherGenerator {
                 TypeCodec.get(t, "args", i.toString())
                     ?: run {
                         logger.error(
-                            "@IpcMethod param type ${paramQNs[i]} unsupported in $ifaceName.$mName; " +
+                            "@IpcMethod param type ${t.declaration.qualifiedName?.asString() ?: "?"} unsupported in $ifaceName.$mName; " +
                                 "make it Parcelable"
                         )
                         return false

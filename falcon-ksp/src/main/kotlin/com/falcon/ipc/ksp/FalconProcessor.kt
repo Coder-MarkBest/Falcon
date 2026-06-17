@@ -63,7 +63,7 @@ class FalconProcessor(
             }
 
             StubGenerator.generate(codeGenerator, serviceInterface, annotatedMethods)
-            ProxyGenerator.generate(codeGenerator, serviceInterface, annotatedMethods)
+            ProxyGenerator.generate(codeGenerator, logger, serviceInterface, annotatedMethods)
 
             // Generate typed IpcDispatcher for @IpcMethod (request/response) methods only
             val ipcMethodMethods = annotatedMethods.filter { func ->
