@@ -1,5 +1,6 @@
 package com.falcon.ipc.ksp
 
+import com.falcon.ipc.ksp.generator.DispatcherGenerator
 import com.falcon.ipc.ksp.generator.ProxyGenerator
 import com.falcon.ipc.ksp.generator.StubGenerator
 import com.google.devtools.ksp.processing.CodeGenerator
@@ -17,13 +18,17 @@ class FalconProcessor(
 
     companion object {
         const val IPC_SERVICE = "com.falcon.ipc.service.IpcService"
+        const val IPC_METHOD = "com.falcon.ipc.annotations.IpcMethod"
         val IPC_ANNOTATIONS = setOf(
-            "com.falcon.ipc.annotations.IpcMethod",
+            IPC_METHOD,
             "com.falcon.ipc.annotations.IpcCallback",
             "com.falcon.ipc.annotations.IpcEvent",
             "com.falcon.ipc.annotations.IpcStream"
         )
     }
+
+    // Track interfaces already processed to avoid duplicate generation across KSP rounds
+    private val processedInterfaces = HashSet<String>()
 
     override fun process(resolver: Resolver): List<KSAnnotated> {
         val serviceInterfaces = resolver.getAllFiles()
@@ -37,6 +42,10 @@ class FalconProcessor(
             .filter { it.validate() }
 
         serviceInterfaces.forEach { serviceInterface ->
+            val qualifiedName = serviceInterface.qualifiedName?.asString() ?: return@forEach
+            if (!processedInterfaces.add(qualifiedName)) {
+                return@forEach // already generated in a prior KSP round
+            }
             val interfaceName = serviceInterface.simpleName.asString()
             logger.info("Processing IPC service: $interfaceName")
 
@@ -56,7 +65,17 @@ class FalconProcessor(
             StubGenerator.generate(codeGenerator, serviceInterface, annotatedMethods)
             ProxyGenerator.generate(codeGenerator, serviceInterface, annotatedMethods)
 
-            logger.info("Generated Stub and Proxy for $interfaceName (${annotatedMethods.size} methods)")
+            // Generate typed IpcDispatcher for @IpcMethod (request/response) methods only
+            val ipcMethodMethods = annotatedMethods.filter { func ->
+                func.annotations.any { ann ->
+                    ann.annotationType.resolve().declaration.qualifiedName?.asString() == IPC_METHOD
+                }
+            }
+            if (ipcMethodMethods.isNotEmpty()) {
+                DispatcherGenerator.generate(codeGenerator, logger, serviceInterface, ipcMethodMethods)
+            }
+
+            logger.info("Generated Stub, Proxy, and Dispatcher for $interfaceName (${annotatedMethods.size} methods)")
         }
 
         return emptyList()
