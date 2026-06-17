@@ -1,5 +1,6 @@
 package com.falcon.ipc.protocol
 
+import android.os.Build
 import android.os.Bundle
 import android.os.Parcelable
 
@@ -23,9 +24,17 @@ object BundleCodec {
     fun putByteArray(b: Bundle, k: String, v: ByteArray?) = b.putByteArray(k, v)
     fun getByteArray(b: Bundle, k: String): ByteArray? = b.getByteArray(k)
     fun <T : Parcelable> putParcelable(b: Bundle, k: String, v: T?) = b.putParcelable(k, v)
-    @Suppress("DEPRECATION")
-    fun <T : Parcelable> getParcelable(b: Bundle, k: String, cls: Class<T>): T? =
-        b.getParcelable(k)
+    fun <T : Parcelable> getParcelable(b: Bundle, k: String, cls: Class<T>): T? {
+        // The receiving Bundle defaults to the framework classloader, which cannot resolve
+        // app-defined Parcelables across a Binder boundary — set the value type's loader first.
+        b.classLoader = cls.classLoader
+        return if (Build.VERSION.SDK_INT >= 33) {
+            b.getParcelable(k, cls)
+        } else {
+            @Suppress("DEPRECATION")
+            b.getParcelable(k)
+        }
+    }
     fun putEnum(b: Bundle, k: String, v: Enum<*>?) = b.putString(k, v?.name)
     fun <T : Enum<T>> getEnum(b: Bundle, k: String, cls: Class<T>): T? =
         b.getString(k)?.let { java.lang.Enum.valueOf(cls, it) }
