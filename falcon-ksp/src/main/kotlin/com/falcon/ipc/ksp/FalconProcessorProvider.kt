@@ -8,7 +8,8 @@ class FalconProcessorProvider : SymbolProcessorProvider {
     override fun create(environment: SymbolProcessorEnvironment): SymbolProcessor {
         return FalconProcessor(
             codeGenerator = environment.codeGenerator,
-            logger = environment.logger
+            logger = environment.logger,
+            options = environment.options
         )
     }
 }
