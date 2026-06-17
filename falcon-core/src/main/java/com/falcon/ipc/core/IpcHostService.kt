@@ -62,7 +62,11 @@ class IpcHostService : Service() {
             val callerPackage = callerResolver.resolve(callingUid)
             return try {
                 val result = messageRouter.handleLocal(request, callerPackage, callingPid)
-                IpcEnvelope.response(request.requestId, IpcSerializer.serializeResult(result))
+                val resp = if (result is android.os.Bundle)
+                    IpcEnvelope(requestId = request.requestId, argsBundle = result)
+                else
+                    IpcEnvelope.response(request.requestId, IpcSerializer.serializeResult(result))
+                resp
             } catch (e: SecurityException) {
                 IpcEnvelope.error(ErrorCode.PERMISSION_DENIED, e.message ?: "Denied", request.requestId)
             } catch (e: IllegalStateException) {

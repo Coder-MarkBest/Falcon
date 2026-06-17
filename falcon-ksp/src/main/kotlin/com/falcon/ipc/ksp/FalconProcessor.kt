@@ -1,6 +1,8 @@
 package com.falcon.ipc.ksp
 
+import com.falcon.ipc.ksp.generator.DispatcherGenerator
 import com.falcon.ipc.ksp.generator.ProxyGenerator
+import com.falcon.ipc.ksp.generator.RegistryGenerator
 import com.falcon.ipc.ksp.generator.StubGenerator
 import com.google.devtools.ksp.processing.CodeGenerator
 import com.google.devtools.ksp.processing.KSPLogger
@@ -12,18 +14,26 @@ import com.google.devtools.ksp.validate
 
 class FalconProcessor(
     private val codeGenerator: CodeGenerator,
-    private val logger: KSPLogger
+    private val logger: KSPLogger,
+    private val options: Map<String, String> = emptyMap()
 ) : SymbolProcessor {
 
     companion object {
         const val IPC_SERVICE = "com.falcon.ipc.service.IpcService"
+        const val IPC_METHOD = "com.falcon.ipc.annotations.IpcMethod"
         val IPC_ANNOTATIONS = setOf(
-            "com.falcon.ipc.annotations.IpcMethod",
+            IPC_METHOD,
             "com.falcon.ipc.annotations.IpcCallback",
             "com.falcon.ipc.annotations.IpcEvent",
             "com.falcon.ipc.annotations.IpcStream"
         )
     }
+
+    // Track interfaces already processed to avoid duplicate generation across KSP rounds
+    private val processedInterfaces = HashSet<String>()
+
+    // Accumulated registry entries: only interfaces with ≥1 @IpcMethod (Dispatcher generated)
+    private val registryEntries = mutableListOf<RegistryGenerator.RegistryEntry>()
 
     override fun process(resolver: Resolver): List<KSAnnotated> {
         val serviceInterfaces = resolver.getAllFiles()
@@ -37,6 +47,10 @@ class FalconProcessor(
             .filter { it.validate() }
 
         serviceInterfaces.forEach { serviceInterface ->
+            val qualifiedName = serviceInterface.qualifiedName?.asString() ?: return@forEach
+            if (!processedInterfaces.add(qualifiedName)) {
+                return@forEach // already generated in a prior KSP round
+            }
             val interfaceName = serviceInterface.simpleName.asString()
             logger.info("Processing IPC service: $interfaceName")
 
@@ -54,11 +68,74 @@ class FalconProcessor(
             }
 
             StubGenerator.generate(codeGenerator, serviceInterface, annotatedMethods)
-            ProxyGenerator.generate(codeGenerator, serviceInterface, annotatedMethods)
+            ProxyGenerator.generate(codeGenerator, logger, serviceInterface, annotatedMethods)
 
-            logger.info("Generated Stub and Proxy for $interfaceName (${annotatedMethods.size} methods)")
+            // Generate typed IpcDispatcher for @IpcMethod (request/response) methods only
+            val ipcMethodMethods = annotatedMethods.filter { func ->
+                func.annotations.any { ann ->
+                    ann.annotationType.resolve().declaration.qualifiedName?.asString() == IPC_METHOD
+                }
+            }
+            if (ipcMethodMethods.isNotEmpty()) {
+                DispatcherGenerator.generate(codeGenerator, logger, serviceInterface, ipcMethodMethods)
+
+                // Accumulate registry entry — same naming conventions as each generator uses:
+                //   dispatcher: "${ifaceName}_Dispatcher"
+                //   proxy:      "${interfaceName.removePrefix("I")}_Proxy"
+                val containingFile = serviceInterface.containingFile
+                if (containingFile != null) {
+                    registryEntries += RegistryGenerator.RegistryEntry(
+                        serviceKeyQualifiedName = qualifiedName,
+                        pkg = serviceInterface.packageName.asString(),
+                        dispatcherClassName = "${interfaceName}_Dispatcher",
+                        proxyClassName = "${interfaceName.removePrefix("I")}_Proxy",
+                        containingFile = containingFile
+                    )
+                }
+            }
+
+            logger.info("Generated Stub, Proxy, and Dispatcher for $interfaceName (${annotatedMethods.size} methods)")
         }
 
         return emptyList()
     }
+
+    override fun finish() {
+        if (registryEntries.isEmpty()) {
+            logger.info("FalconProcessor.finish(): no @IpcMethod interfaces found, skipping registry generation")
+            return
+        }
+
+        val moduleId = resolveModuleId()
+        logger.info("FalconProcessor.finish(): generating ${moduleId}FalconGeneratedRegistry for ${registryEntries.size} interface(s)")
+        RegistryGenerator.generate(codeGenerator, registryEntries, moduleId)
+    }
+
+    /**
+     * Resolves the module ID for the generated registry object name.
+     *
+     * Priority:
+     * 1. KSP option "falcon.moduleId" (set via ksp { arg("falcon.moduleId", "MyModule") } in build.gradle)
+     * 2. Fallback: last segment of the first entry's package, capitalized and sanitized to a valid Kotlin identifier.
+     *    e.g. "com.falcon.benchmark" → "Benchmark"
+     */
+    private fun resolveModuleId(): String {
+        val fromOption = options["falcon.moduleId"]
+        if (!fromOption.isNullOrBlank()) {
+            return fromOption.sanitizeIdentifier().capitalize()
+        }
+
+        // Fallback: last segment of first entry's package
+        val firstPkg = registryEntries.first().pkg
+        val lastSegment = firstPkg.substringAfterLast(".")
+        return lastSegment.sanitizeIdentifier().capitalize()
+    }
+
+    private fun String.sanitizeIdentifier(): String =
+        this.replace(Regex("[^A-Za-z0-9_]"), "_")
+            .let { if (it.isEmpty() || it[0].isDigit()) "_$it" else it }
+
+    @Suppress("DEPRECATION")
+    private fun String.capitalize(): String =
+        replaceFirstChar { it.uppercaseChar() }
 }

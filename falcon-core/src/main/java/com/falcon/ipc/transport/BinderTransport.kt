@@ -17,7 +17,8 @@ class BinderTransport(
             if (response.isError) {
                 TransportResult.Error(response.errorCode, response.errorMessage)
             } else {
-                TransportResult.Success(response.args)
+                if (response.argsBundle != null) TransportResult.Success(response.argsBundle)
+                else TransportResult.Success(response.args)
             }
         } catch (e: Exception) {
             FalconLogger.e("BinderTransport", "Invoke failed", e)
