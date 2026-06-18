@@ -1,9 +1,10 @@
 package com.falcon.ipc.core
 
+import android.os.Bundle
 import com.falcon.ipc.monitor.MonitorFacade
 import com.falcon.ipc.monitor.MonitorLevel
 import com.falcon.ipc.protocol.IpcEnvelope
-import com.falcon.ipc.protocol.IpcSerializer
+import com.falcon.ipc.runtime.IpcDispatcher
 import com.falcon.ipc.security.AccessRule
 import com.falcon.ipc.security.PermissionChecker
 import com.falcon.ipc.security.RateLimiter
@@ -21,10 +22,6 @@ class MessageRouterTest {
         fun add(a: Int, b: Int): Int
     }
 
-    class CalcServiceImpl : ICalcService {
-        override fun add(a: Int, b: Int): Int = a + b
-    }
-
     interface EchoService : IpcService {
         fun echo(s: String): String
     }
@@ -36,10 +33,24 @@ class MessageRouterTest {
     private lateinit var registry: ServiceRegistry
     private lateinit var router: MessageRouter
 
+    private fun fakeDispatcher(prefix: String = "ok") = object : IpcDispatcher {
+        override fun dispatch(methodId: Int, args: Bundle) =
+            Bundle().apply { putString("r", "$prefix:$methodId") }
+    }
+
     @Before
     fun setup() {
         registry = ServiceRegistry()
-        registry.register(ICalcService::class, CalcServiceImpl())
+
+        // Register dispatcher for ICalcService (methodId=1 → add)
+        val calcKey = ICalcService::class.qualifiedName!!
+        registry.registerDispatcher(calcKey, object : IpcDispatcher {
+            override fun dispatch(methodId: Int, args: Bundle): Bundle {
+                val a = args.getInt("a", 0)
+                val b = args.getInt("b", 0)
+                return Bundle().apply { putInt("result", a + b) }
+            }
+        })
 
         val monitor = MonitorFacade().apply { setLevel(MonitorLevel.NONE) }
         val permissionChecker = PermissionChecker(emptyMap())
@@ -49,23 +60,26 @@ class MessageRouterTest {
     }
 
     @Test
-    fun `routes to local service`() {
-        val serializedArgs = IpcSerializer.serializeArgs(arrayOf(3, 5))
+    fun `routes to local service via dispatcher`() {
+        val argsBundle = Bundle().apply { putInt("a", 3); putInt("b", 5) }
         val envelope = IpcEnvelope(
             serviceKey = ICalcService::class.qualifiedName!!,
             method = "add",
-            args = serializedArgs
+            methodId = 1,
+            argsBundle = argsBundle
         )
 
-        val result = router.handleLocal(envelope, "com.test", 1000)
-        assertEquals(8, result)
+        val result = router.handleLocal(envelope, "com.test", 1000) as Bundle
+        assertEquals(8, result.getInt("result"))
     }
 
     @Test
     fun `returns error for unknown service`() {
         val envelope = IpcEnvelope(
             serviceKey = "com.nonexistent.IService",
-            method = "doWork"
+            method = "doWork",
+            methodId = 1,
+            argsBundle = Bundle()
         )
 
         try {
@@ -78,9 +92,9 @@ class MessageRouterTest {
 
     @Test
     fun `checks permission before routing`() {
+        val calcKey = ICalcService::class.qualifiedName!!
         val denyChecker = PermissionChecker(
-            mapOf(ICalcService::class.qualifiedName!! to
-                AccessRule(allowList = setOf(":allowed"), denyList = emptySet()))
+            mapOf(calcKey to AccessRule(allowList = setOf(":allowed"), denyList = emptySet()))
         )
         val restrictedRouter = MessageRouter(
             registry,
@@ -89,11 +103,11 @@ class MessageRouterTest {
             RateLimiter()
         )
 
-        val serializedArgs = IpcSerializer.serializeArgs(arrayOf(1, 2))
         val envelope = IpcEnvelope(
-            serviceKey = ICalcService::class.qualifiedName!!,
+            serviceKey = calcKey,
             method = "add",
-            args = serializedArgs
+            methodId = 1,
+            argsBundle = Bundle().apply { putInt("a", 1); putInt("b", 2) }
         )
 
         try {
@@ -137,13 +151,13 @@ class MessageRouterTest {
 
     @Test
     fun `rate limit denial throws`() {
+        val echoKey = EchoService::class.qualifiedName!!
         val registry = ServiceRegistry()
-        registry.register(EchoService::class, EchoServiceImpl())
+        registry.registerDispatcher(echoKey, fakeDispatcher())
         val router = MessageRouter(registry, MonitorFacade(), PermissionChecker(emptyMap()),
             RateLimiter(maxCallsPerSecond = 1, clock = { 0L }))
-        val key = EchoService::class.qualifiedName!!
         fun call() = router.handleLocal(
-            IpcEnvelope(serviceKey = key, method = "echo", args = IpcSerializer.serializeArgs(arrayOf("hi"))),
+            IpcEnvelope(serviceKey = echoKey, method = "echo", methodId = 1, argsBundle = Bundle()),
             "proc", 1234)
         call() // first allowed
         assertThrows(IllegalStateException::class.java) { call() } // second over limit

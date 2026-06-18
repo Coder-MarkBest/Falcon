@@ -1,9 +1,10 @@
 package com.falcon.ipc.core
 
+import android.os.Bundle
 import com.falcon.ipc.monitor.MonitorFacade
 import com.falcon.ipc.monitor.MonitorLevel
 import com.falcon.ipc.protocol.IpcEnvelope
-import com.falcon.ipc.protocol.IpcSerializer
+import com.falcon.ipc.runtime.IpcDispatcher
 import com.falcon.ipc.security.PermissionChecker
 import com.falcon.ipc.security.RateLimiter
 import com.falcon.ipc.service.IpcService
@@ -21,10 +22,9 @@ class BatchRequestTest {
         fun multiply(a: Int, b: Int): Int
     }
 
-    class MathServiceImpl : IMathService {
-        override fun add(a: Int, b: Int): Int = a + b
-        override fun multiply(a: Int, b: Int): Int = a * b
-    }
+    // Method IDs
+    private val MATH_ADD = 1
+    private val MATH_MULTIPLY = 2
 
     private lateinit var router: MessageRouter
     private lateinit var batchExecutor: BatchExecutor
@@ -32,7 +32,22 @@ class BatchRequestTest {
     @Before
     fun setup() {
         val registry = ServiceRegistry()
-        registry.register(IMathService::class, MathServiceImpl())
+        val mathKey = IMathService::class.qualifiedName!!
+        registry.registerDispatcher(mathKey, object : IpcDispatcher {
+            override fun dispatch(methodId: Int, args: Bundle): Bundle = when (methodId) {
+                MATH_ADD -> {
+                    val a = args.getInt("a", 0)
+                    val b = args.getInt("b", 0)
+                    Bundle().apply { putInt("result", a + b) }
+                }
+                MATH_MULTIPLY -> {
+                    val a = args.getInt("a", 0)
+                    val b = args.getInt("b", 0)
+                    Bundle().apply { putInt("result", a * b) }
+                }
+                else -> throw IllegalArgumentException("Unknown methodId=$methodId")
+            }
+        })
         router = MessageRouter(
             registry,
             MonitorFacade().apply { setLevel(MonitorLevel.NONE) },
@@ -44,16 +59,19 @@ class BatchRequestTest {
 
     @Test
     fun `batch executes multiple requests`() {
+        val mathKey = IMathService::class.qualifiedName!!
         val batch = BatchRequest()
         batch.add(IpcEnvelope(
-            serviceKey = IMathService::class.qualifiedName!!,
+            serviceKey = mathKey,
             method = "add",
-            args = IpcSerializer.serializeArgs(arrayOf(3, 5))
+            methodId = MATH_ADD,
+            argsBundle = Bundle().apply { putInt("a", 3); putInt("b", 5) }
         ))
         batch.add(IpcEnvelope(
-            serviceKey = IMathService::class.qualifiedName!!,
+            serviceKey = mathKey,
             method = "multiply",
-            args = IpcSerializer.serializeArgs(arrayOf(4, 6))
+            methodId = MATH_MULTIPLY,
+            argsBundle = Bundle().apply { putInt("a", 4); putInt("b", 6) }
         ))
 
         val response = batchExecutor.execute(batch, "test")
@@ -64,15 +82,19 @@ class BatchRequestTest {
 
     @Test
     fun `batch handles individual errors`() {
+        val mathKey = IMathService::class.qualifiedName!!
         val batch = BatchRequest()
         batch.add(IpcEnvelope(
-            serviceKey = IMathService::class.qualifiedName!!,
+            serviceKey = mathKey,
             method = "add",
-            args = IpcSerializer.serializeArgs(arrayOf(1, 2))
+            methodId = MATH_ADD,
+            argsBundle = Bundle().apply { putInt("a", 1); putInt("b", 2) }
         ))
         batch.add(IpcEnvelope(
             serviceKey = "com.nonexistent.Service",
-            method = "missing"
+            method = "missing",
+            methodId = 1,
+            argsBundle = Bundle()
         ))
 
         val response = batchExecutor.execute(batch, "test")
@@ -83,11 +105,13 @@ class BatchRequestTest {
 
     @Test
     fun `batch tracks execution time`() {
+        val mathKey = IMathService::class.qualifiedName!!
         val batch = BatchRequest()
         batch.add(IpcEnvelope(
-            serviceKey = IMathService::class.qualifiedName!!,
+            serviceKey = mathKey,
             method = "add",
-            args = IpcSerializer.serializeArgs(arrayOf(1, 1))
+            methodId = MATH_ADD,
+            argsBundle = Bundle().apply { putInt("a", 1); putInt("b", 1) }
         ))
 
         val response = batchExecutor.execute(batch, "test")
