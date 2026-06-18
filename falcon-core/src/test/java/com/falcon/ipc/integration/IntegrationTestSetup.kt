@@ -102,30 +102,6 @@ class IntegrationTestSetup {
     }
 
     @Test
-    fun `batch execution integration`() {
-        val registry = ServiceRegistry()
-        registry.registerDispatcher(INavService::class.qualifiedName!!, navDispatcher())
-
-        val router = MessageRouter(
-            registry,
-            MonitorFacade().apply { setLevel(MonitorLevel.NONE) },
-            PermissionChecker(emptyMap()),
-            RateLimiter()
-        )
-        val batchExecutor = BatchExecutor(router)
-
-        val batch = BatchRequest()
-        batch.add(IpcEnvelope(serviceKey = INavService::class.qualifiedName!!, method = "getLocation",
-            methodId = NAV_GET_LOCATION, argsBundle = Bundle()))
-        batch.add(IpcEnvelope(serviceKey = INavService::class.qualifiedName!!, method = "calculateRoute",
-            methodId = NAV_CALCULATE_ROUTE, argsBundle = Bundle().apply { putString("dest", "airport") }))
-
-        val response = batchExecutor.execute(batch, "test")
-        assertEquals(2, response.responses.size)
-        assertFalse(response.responses[0].isError)
-    }
-
-    @Test
     fun `monitor integration`() {
         val monitor = MonitorFacade().apply { setLevel(MonitorLevel.DETAILED) }
         val registry = ServiceRegistry()

@@ -10,7 +10,6 @@ import com.falcon.ipc.aidl.IIpcEventCallback
 import com.falcon.ipc.aidl.IIpcHost
 import com.falcon.ipc.protocol.ErrorCode
 import com.falcon.ipc.protocol.IpcEnvelope
-import com.falcon.ipc.protocol.IpcSerializer
 import com.falcon.ipc.security.SignatureGuard
 import com.falcon.ipc.util.CallerResolver
 import com.falcon.ipc.util.FalconLogger
@@ -64,11 +63,7 @@ class IpcHostService : Service() {
             val callerPackage = callerResolver.resolve(callingUid)
             return try {
                 val result = messageRouter.handleLocal(request, callerPackage, callingPid)
-                val resp = if (result is android.os.Bundle)
-                    IpcEnvelope(requestId = request.requestId, argsBundle = result)
-                else
-                    IpcEnvelope.response(request.requestId, IpcSerializer.serializeResult(result))
-                resp
+                IpcEnvelope(requestId = request.requestId, argsBundle = result as android.os.Bundle)
             } catch (e: SecurityException) {
                 IpcEnvelope.error(ErrorCode.PERMISSION_DENIED, e.message ?: "Denied", request.requestId)
             } catch (e: IllegalStateException) {

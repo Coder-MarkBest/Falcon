@@ -127,12 +127,12 @@ class MessageRouterTest {
         val key = EchoService::class.qualifiedName!!
         val present = router.handleLocal(
             IpcEnvelope(serviceKey = "", method = "__check_service__", args = key.toByteArray(Charsets.UTF_8)),
-            "proc", 1234)
-        assertEquals(true, present)
+            "proc", 1234) as Bundle
+        assertEquals(true, present.getBoolean("r"))
         val absent = router.handleLocal(
             IpcEnvelope(serviceKey = "", method = "__check_service__", args = "no.such.Svc".toByteArray(Charsets.UTF_8)),
-            "proc", 1234)
-        assertEquals(false, absent)
+            "proc", 1234) as Bundle
+        assertEquals(false, absent.getBoolean("r"))
     }
 
     @Test
@@ -145,8 +145,8 @@ class MessageRouterTest {
         val router = MessageRouter(registry, MonitorFacade(), checker, RateLimiter(clock = { 0L }))
         val result = router.handleLocal(
             IpcEnvelope(serviceKey = "", method = "__check_service__", args = key.toByteArray(Charsets.UTF_8)),
-            "intruder", 1234)
-        assertEquals(false, result) // denied probe returns false, does not throw and does not reveal existence
+            "intruder", 1234) as Bundle
+        assertEquals(false, result.getBoolean("r")) // denied probe returns false, does not throw and does not reveal existence
     }
 
     @Test

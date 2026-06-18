@@ -3,7 +3,6 @@ package com.falcon.ipc.ksp
 import com.falcon.ipc.ksp.generator.DispatcherGenerator
 import com.falcon.ipc.ksp.generator.ProxyGenerator
 import com.falcon.ipc.ksp.generator.RegistryGenerator
-import com.falcon.ipc.ksp.generator.StubGenerator
 import com.google.devtools.ksp.processing.CodeGenerator
 import com.google.devtools.ksp.processing.KSPLogger
 import com.google.devtools.ksp.processing.Resolver
@@ -67,7 +66,6 @@ class FalconProcessor(
                 return@forEach
             }
 
-            StubGenerator.generate(codeGenerator, serviceInterface, annotatedMethods)
             ProxyGenerator.generate(codeGenerator, logger, serviceInterface, annotatedMethods)
 
             // Generate typed IpcDispatcher for all annotated methods (generator classifies internally)
