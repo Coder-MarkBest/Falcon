@@ -132,6 +132,10 @@ object ProxyGenerator {
         val replyParam = allParams.firstOrNull {
             it.type.resolve().declaration.qualifiedName?.asString() == IPC_REPLY
         }
+        if (replyParam == null) {
+            logger.error("@IpcCallback method $interfaceName.$methodName must declare an IpcReply<T> parameter")
+            return
+        }
         val regularParams = allParams.filter {
             it.type.resolve().declaration.qualifiedName?.asString() != IPC_REPLY
         }

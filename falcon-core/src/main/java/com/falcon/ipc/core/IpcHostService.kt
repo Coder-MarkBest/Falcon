@@ -24,6 +24,11 @@ class IpcHostService : Service() {
     private lateinit var messageRouter: MessageRouter
     private val eventSubscribers = ConcurrentHashMap<String, CopyOnWriteArrayList<IIpcEventCallback>>()
     private val eventCollector = EventCollector()
+    // Per-subscription death cleanup: each subscribe() callback is a distinct binder.
+    // The AtomicBoolean guards the ref-count decrement so it runs exactly once whether
+    // released via explicit unsubscribe() OR the subscriber process dying.
+    private val deathRecipients =
+        ConcurrentHashMap<IIpcEventCallback, Pair<IBinder.DeathRecipient, java.util.concurrent.atomic.AtomicBoolean>>()
 
     override fun onCreate() {
         super.onCreate()
@@ -77,20 +82,43 @@ class IpcHostService : Service() {
             eventSubscribers.getOrPut(eventKey) { CopyOnWriteArrayList() }.add(callback)
             FalconLogger.d("Host", "Subscribed: $eventKey")
             val parts = eventKey.split("#")
-            if (parts.size == 2) {
+            val methodId = if (parts.size == 2) parts[1].toIntOrNull() else null
+            if (methodId != null) {
                 val serviceKey = parts[0]
-                val methodId = parts[1].toIntOrNull()
-                if (methodId != null) {
-                    eventCollector.onSubscribe(eventKey,
-                        { serviceRegistry.getDispatcher(serviceKey)?.eventFlow(methodId) },
-                        { bundle -> emitBundle(eventKey, bundle) })
+                eventCollector.onSubscribe(eventKey,
+                    { serviceRegistry.getDispatcher(serviceKey)?.eventFlow(methodId) },
+                    { bundle -> emitBundle(eventKey, bundle) })
+                // Release the subscription if the client process dies without unsubscribing.
+                val released = java.util.concurrent.atomic.AtomicBoolean(false)
+                val recipient = IBinder.DeathRecipient {
+                    if (released.compareAndSet(false, true)) {
+                        eventSubscribers[eventKey]?.remove(callback)
+                        eventCollector.onUnsubscribe(eventKey)
+                        deathRecipients.remove(callback)
+                    }
+                }
+                try {
+                    callback.asBinder().linkToDeath(recipient, 0)
+                    deathRecipients[callback] = recipient to released
+                } catch (e: Exception) {
+                    // Binder already dead — undo the subscription immediately.
+                    if (released.compareAndSet(false, true)) {
+                        eventSubscribers[eventKey]?.remove(callback)
+                        eventCollector.onUnsubscribe(eventKey)
+                    }
                 }
             }
         }
 
         override fun unsubscribe(eventKey: String, callback: IIpcEventCallback) {
             eventSubscribers[eventKey]?.remove(callback)
-            eventCollector.onUnsubscribe(eventKey)
+            val entry = deathRecipients.remove(callback)
+            if (entry != null) {
+                try { callback.asBinder().unlinkToDeath(entry.first, 0) } catch (_: Exception) {}
+                if (entry.second.compareAndSet(false, true)) eventCollector.onUnsubscribe(eventKey)
+            } else {
+                eventCollector.onUnsubscribe(eventKey)
+            }
             FalconLogger.d("Host", "Unsubscribed: $eventKey")
         }
 
