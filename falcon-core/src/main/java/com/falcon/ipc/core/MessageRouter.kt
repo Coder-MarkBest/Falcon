@@ -24,7 +24,7 @@ class MessageRouter(
         }
         try {
             if (envelope.method == "__check_service__") {
-                val key = String(envelope.args ?: ByteArray(0), Charsets.UTF_8)
+                val key = envelope.argsBundle?.getString("key") ?: ""
                 val allowed = permissionChecker.check(key, callerPackage)
                 val exists = allowed && (registry.getDispatcher(key) != null || registry.getService(key) != null)
                 return android.os.Bundle().apply { putBoolean("r", exists) }

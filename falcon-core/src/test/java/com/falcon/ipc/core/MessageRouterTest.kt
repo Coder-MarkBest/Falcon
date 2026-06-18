@@ -126,11 +126,11 @@ class MessageRouterTest {
             RateLimiter(clock = { 0L }))
         val key = EchoService::class.qualifiedName!!
         val present = router.handleLocal(
-            IpcEnvelope(serviceKey = "", method = "__check_service__", args = key.toByteArray(Charsets.UTF_8)),
+            IpcEnvelope(serviceKey = "", method = "__check_service__", argsBundle = Bundle().apply { putString("key", key) }),
             "proc", 1234) as Bundle
         assertEquals(true, present.getBoolean("r"))
         val absent = router.handleLocal(
-            IpcEnvelope(serviceKey = "", method = "__check_service__", args = "no.such.Svc".toByteArray(Charsets.UTF_8)),
+            IpcEnvelope(serviceKey = "", method = "__check_service__", argsBundle = Bundle().apply { putString("key", "no.such.Svc") }),
             "proc", 1234) as Bundle
         assertEquals(false, absent.getBoolean("r"))
     }
@@ -144,7 +144,7 @@ class MessageRouterTest {
         val checker = PermissionChecker(mapOf(key to AccessRule(allowList = setOf("trusted"))))
         val router = MessageRouter(registry, MonitorFacade(), checker, RateLimiter(clock = { 0L }))
         val result = router.handleLocal(
-            IpcEnvelope(serviceKey = "", method = "__check_service__", args = key.toByteArray(Charsets.UTF_8)),
+            IpcEnvelope(serviceKey = "", method = "__check_service__", argsBundle = Bundle().apply { putString("key", key) }),
             "intruder", 1234) as Bundle
         assertEquals(false, result.getBoolean("r")) // denied probe returns false, does not throw and does not reveal existence
     }

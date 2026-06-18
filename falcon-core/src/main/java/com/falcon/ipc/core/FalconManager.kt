@@ -77,7 +77,7 @@ class FalconManager internal constructor(
                 val checkEnvelope = IpcEnvelope(
                     serviceKey = "",
                     method = "__check_service__",
-                    args = key.toByteArray(Charsets.UTF_8)
+                    argsBundle = android.os.Bundle().apply { putString("key", key) }
                 )
                 val result = peer.transport.invoke(checkEnvelope)
                 if (result is TransportResult.Success) {
