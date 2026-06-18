@@ -46,19 +46,22 @@ falcon-benchmark (Android app — compares Falcon vs AIDL vs Messenger vs Conten
 - All calls go over Binder (`IIpcHost.invoke(IpcEnvelope)`); payloads are kept under the ~1MB Binder transaction limit (no large-payload use case in scope)
 - The SharedMemory hybrid path was removed (see `docs/superpowers/specs/2026-06-17-overengineering-audit.md`) — it was unused dead weight given no high-frequency large payloads
 
-### @IpcMethod dispatch: Binder-native path (KSP-generated)
-`@IpcMethod` request/response calls are handled by KSP-generated classes — **no reflection, no `Parcel.marshall()`**:
-- **`Xxx_Dispatcher`** (server side): registered in the service process; receives a typed `Bundle` payload, unpacks arguments by key, invokes the real implementation, and writes the return value back into a result `Bundle`.
-- **`Xxx_Proxy`** (client side): implements the service interface; packs call arguments into a `Bundle` keyed by parameter name, sends it over Binder with a stable `methodId` (FNV-1a hash of the method signature), and unpacks the response.
-- `methodId` stability means renaming a method is a breaking API change (the hash changes), but adding overloads is safe (each signature gets its own hash).
+### Dispatch: fully Binder-native (KSP-generated, no reflection / no `Parcel.marshall()`)
+ALL IPC — `@IpcMethod` (request/response), `@IpcEvent`/`@IpcStream` (Flow), and `@IpcCallback` — is handled by KSP-generated classes with typed `Bundle` payloads and a stable `methodId` (FNV-1a hash of the method signature; `IpcReply` params are excluded so proxy and dispatcher agree):
+- **`Xxx_Dispatcher`** (server): `dispatch(methodId, Bundle): Bundle` for request/response; `eventFlow(methodId): Flow<Bundle>?` for events/streams; `invokeCallback(methodId, Bundle, reply)` for callbacks. No reflection.
+- **`Xxx_Proxy`** (client): packs args into a typed `Bundle`, sends over Binder with the `methodId`. Events use `EventProxy.typedRemoteFlow` (subscribe + decode); callbacks use `transport.invokeCallback`.
+- Server-side event Flows are collected lazily and ref-counted by `EventCollector` (collect on first subscriber, cancel on last).
+- `methodId` stability: renaming a method is a breaking API change; overloads are safe (each signature hashes distinctly).
+- Supported wire types: primitives, String, ByteArray, Parcelable, enum (data classes must be Parcelable). Unsupported types fail at KSP compile time.
 - Consumers must supply the generated registry at init time:
   ```kotlin
   Falcon.init(context) {
       generated(<Module>FalconGeneratedRegistry)   // e.g. BenchmarkFalconGeneratedRegistry
   }
   ```
+- Removed legacy: `IpcSerializer`, dynamic `ProxyFactory`, `MessageRouter` reflective dispatch, `EventBus`, `StubGenerator`/`_Stub`, and the `IpcEnvelope` byte-array `args` field — the wire format is Bundle-only.
 
-> **Note:** `@IpcEvent`, `@IpcStream`, and `@IpcCallback` still use the legacy `IpcSerializer`/reflective dispatch path. Migration of those annotation types to the same Binder-native generated-code approach is planned as a follow-up.
+> **Verification gap:** end-to-end generated dispatch (request/response, events, callbacks) is covered by JVM round-trip tests through the real generated code (`falcon-benchmark` `FalconGeneratedRoundTripTest`). True cross-process (two-process Binder) verification still requires a device/emulator and is not run in CI-less environments.
 
 ### Key packages in falcon-core
 - `com.falcon.ipc` — Falcon entry point, FalconConfig DSL
