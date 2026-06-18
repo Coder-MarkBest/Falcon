@@ -37,15 +37,86 @@ object ProxyGenerator {
             appendLine(") : $interfaceName {")
             appendLine()
 
+            val IPC_CALLBACK_QN = "com.falcon.ipc.annotations.IpcCallback"
+            val IPC_REPLY_QN    = "com.falcon.ipc.service.IpcReply"
+
             methods.forEach { method ->
                 val methodName = method.simpleName.asString()
                 val returnTypeResolved = method.returnType?.resolve()
                 val returnTypeSimpleName = returnTypeResolved?.declaration?.simpleName?.asString() ?: "Any?"
                 val isFlow = returnTypeSimpleName == "Flow"
+                val isCallback = method.annotations.any {
+                    it.annotationType.resolve().declaration.qualifiedName?.asString() == IPC_CALLBACK_QN
+                }
                 val isSuspend = method.modifiers.contains(Modifier.SUSPEND)
 
                 if (isFlow) {
-                    appendLine("    // Event/Stream method: $methodName — returns Flow, handled by runtime")
+                    // Build parameter list for Flow methods (typically none, but be safe)
+                    val flowParamDecls = method.parameters.joinToString(", ") { param ->
+                        val pName = param.name?.asString() ?: "p${method.parameters.indexOf(param)}"
+                        val pQN = param.type.resolve().declaration.qualifiedName?.asString()
+                            ?: param.type.resolve().declaration.simpleName.asString()
+                        val pType = when (pQN) {
+                            "kotlin.Int" -> "Int"; "kotlin.Long" -> "Long"
+                            "kotlin.Float" -> "Float"; "kotlin.Double" -> "Double"
+                            "kotlin.Boolean" -> "Boolean"; "kotlin.String" -> "String"
+                            "kotlin.ByteArray" -> "ByteArray"; "kotlin.Unit" -> "Unit"
+                            else -> pQN.substringAfterLast(".")
+                        }
+                        "$pName: $pType"
+                    }
+                    // Reconstruct exact Flow<T> return type
+                    val elemQN = returnTypeResolved?.arguments?.firstOrNull()?.type?.resolve()
+                        ?.declaration?.qualifiedName?.asString() ?: "Any"
+                    val elemSimple = when (elemQN) {
+                        "kotlin.Int" -> "Int"; "kotlin.Long" -> "Long"
+                        "kotlin.Float" -> "Float"; "kotlin.Double" -> "Double"
+                        "kotlin.Boolean" -> "Boolean"; "kotlin.String" -> "String"
+                        "kotlin.ByteArray" -> "ByteArray"
+                        else -> elemQN.substringAfterLast(".")
+                    }
+                    // Must implement the interface method — stub that errors at runtime
+                    appendLine("    // Event/Stream method: $methodName — real Flow is provided by runtime event subscription")
+                    appendLine("    @Suppress(\"UNCHECKED_CAST\")")
+                    appendLine("    override fun $methodName($flowParamDecls): kotlinx.coroutines.flow.Flow<$elemSimple> =")
+                    appendLine("        error(\"$methodName: subscribe via FalconManager.remoteFlow(), not direct call\")")
+                    appendLine()
+                    return@forEach
+                }
+
+                if (isCallback) {
+                    // Stub implementation — real dispatch is handled by runtime via invokeCallback
+                    val paramDecls = method.parameters.joinToString(", ") { param ->
+                        val pName = param.name?.asString() ?: "p${method.parameters.indexOf(param)}"
+                        val resolvedType = param.type.resolve()
+                        val pQN = resolvedType.declaration.qualifiedName?.asString()
+                            ?: resolvedType.declaration.simpleName.asString()
+                        // Handle IpcReply<T> specially — reconstruct generic type string
+                        val pType = if (pQN == IPC_REPLY_QN) {
+                            val typeArg = resolvedType.arguments.firstOrNull()?.type?.resolve()
+                                ?.declaration?.qualifiedName?.asString() ?: "Any"
+                            val simpleArg = when (typeArg) {
+                                "kotlin.Int" -> "Int"; "kotlin.Long" -> "Long"
+                                "kotlin.Float" -> "Float"; "kotlin.Double" -> "Double"
+                                "kotlin.Boolean" -> "Boolean"; "kotlin.String" -> "String"
+                                "kotlin.ByteArray" -> "ByteArray"
+                                else -> typeArg.substringAfterLast(".")
+                            }
+                            "com.falcon.ipc.service.IpcReply<$simpleArg>"
+                        } else {
+                            when (pQN) {
+                                "kotlin.Int" -> "Int"; "kotlin.Long" -> "Long"
+                                "kotlin.Float" -> "Float"; "kotlin.Double" -> "Double"
+                                "kotlin.Boolean" -> "Boolean"; "kotlin.String" -> "String"
+                                "kotlin.ByteArray" -> "ByteArray"; "kotlin.Unit" -> "Unit"
+                                else -> pQN.substringAfterLast(".")
+                            }
+                        }
+                        "$pName: $pType"
+                    }
+                    appendLine("    override fun $methodName($paramDecls) {")
+                    appendLine("        error(\"$methodName: callback methods must be invoked via IpcDispatcher.invokeCallback\")")
+                    appendLine("    }")
                     appendLine()
                     return@forEach
                 }

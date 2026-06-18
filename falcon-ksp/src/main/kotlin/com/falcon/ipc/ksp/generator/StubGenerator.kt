@@ -32,7 +32,14 @@ object StubGenerator {
             appendLine("    fun dispatch(envelope: IpcEnvelope): IpcEnvelope {")
             appendLine("        return when (envelope.method) {")
 
+            val IPC_METHOD_QN = "com.falcon.ipc.annotations.IpcMethod"
             methods.forEach { method ->
+                // StubGenerator only handles @IpcMethod request/response; skip event/callback methods
+                val hasIpcMethod = method.annotations.any {
+                    it.annotationType.resolve().declaration.qualifiedName?.asString() == IPC_METHOD_QN
+                }
+                if (!hasIpcMethod) return@forEach
+
                 val methodName = method.simpleName.asString()
                 val params = method.parameters
                 val isSuspend = method.modifiers.contains(Modifier.SUSPEND)

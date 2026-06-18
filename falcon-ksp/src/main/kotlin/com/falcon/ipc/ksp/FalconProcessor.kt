@@ -32,7 +32,7 @@ class FalconProcessor(
     // Track interfaces already processed to avoid duplicate generation across KSP rounds
     private val processedInterfaces = HashSet<String>()
 
-    // Accumulated registry entries: only interfaces with ≥1 @IpcMethod (Dispatcher generated)
+    // Accumulated registry entries: interfaces with ≥1 annotated method (Dispatcher generated)
     private val registryEntries = mutableListOf<RegistryGenerator.RegistryEntry>()
 
     override fun process(resolver: Resolver): List<KSAnnotated> {
@@ -70,14 +70,9 @@ class FalconProcessor(
             StubGenerator.generate(codeGenerator, serviceInterface, annotatedMethods)
             ProxyGenerator.generate(codeGenerator, logger, serviceInterface, annotatedMethods)
 
-            // Generate typed IpcDispatcher for @IpcMethod (request/response) methods only
-            val ipcMethodMethods = annotatedMethods.filter { func ->
-                func.annotations.any { ann ->
-                    ann.annotationType.resolve().declaration.qualifiedName?.asString() == IPC_METHOD
-                }
-            }
-            if (ipcMethodMethods.isNotEmpty()) {
-                DispatcherGenerator.generate(codeGenerator, logger, serviceInterface, ipcMethodMethods)
+            // Generate typed IpcDispatcher for all annotated methods (generator classifies internally)
+            if (annotatedMethods.isNotEmpty()) {
+                DispatcherGenerator.generate(codeGenerator, logger, serviceInterface, annotatedMethods)
 
                 // Accumulate registry entry — same naming conventions as each generator uses:
                 //   dispatcher: "${ifaceName}_Dispatcher"
