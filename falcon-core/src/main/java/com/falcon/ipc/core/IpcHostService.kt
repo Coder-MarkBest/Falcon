@@ -3,6 +3,7 @@ package com.falcon.ipc.core
 import android.app.Service
 import android.content.Intent
 import android.os.Binder
+import android.os.Bundle
 import android.os.IBinder
 import com.falcon.ipc.Falcon
 import com.falcon.ipc.aidl.IIpcEventCallback
@@ -23,6 +24,7 @@ class IpcHostService : Service() {
     private lateinit var serviceRegistry: ServiceRegistry
     private lateinit var messageRouter: MessageRouter
     private val eventSubscribers = ConcurrentHashMap<String, CopyOnWriteArrayList<IIpcEventCallback>>()
+    private val eventCollector = EventCollector()
 
     override fun onCreate() {
         super.onCreate()
@@ -79,10 +81,21 @@ class IpcHostService : Service() {
         override fun subscribe(eventKey: String, callback: IIpcEventCallback) {
             eventSubscribers.getOrPut(eventKey) { CopyOnWriteArrayList() }.add(callback)
             FalconLogger.d("Host", "Subscribed: $eventKey")
+            val parts = eventKey.split("#")
+            if (parts.size == 2) {
+                val serviceKey = parts[0]
+                val methodId = parts[1].toIntOrNull()
+                if (methodId != null) {
+                    eventCollector.onSubscribe(eventKey,
+                        { serviceRegistry.getDispatcher(serviceKey)?.eventFlow(methodId) },
+                        { bundle -> emitBundle(eventKey, bundle) })
+                }
+            }
         }
 
         override fun unsubscribe(eventKey: String, callback: IIpcEventCallback) {
             eventSubscribers[eventKey]?.remove(callback)
+            eventCollector.onUnsubscribe(eventKey)
             FalconLogger.d("Host", "Unsubscribed: $eventKey")
         }
 
@@ -90,9 +103,12 @@ class IpcHostService : Service() {
             return serviceRegistry.getAllServices().keys.joinToString(",")
         }
 
-        override fun invokeCallback(request: IpcEnvelope, reply: IIpcEventCallback) {
-            // Wired to dispatcher in a later task (P2B Task 5)
-            FalconLogger.w("Host", "invokeCallback not yet wired")
+        override fun invokeCallback(request: IpcEnvelope, reply: com.falcon.ipc.aidl.IIpcEventCallback) {
+            val d = serviceRegistry.getDispatcher(request.serviceKey) ?: return
+            d.invokeCallback(request.methodId, request.argsBundle ?: Bundle()) { b ->
+                try { reply.onEvent(IpcEnvelope(requestId = request.requestId, argsBundle = b)) }
+                catch (e: Exception) { FalconLogger.w("Host", "callback reply failed: ${e.message}") }
+            }
         }
     }
 
@@ -104,5 +120,17 @@ class IpcHostService : Service() {
                 FalconLogger.w("Host", "Failed to deliver event to subscriber: ${e.message}")
             }
         }
+    }
+
+    private fun emitBundle(eventKey: String, bundle: Bundle) {
+        eventSubscribers[eventKey]?.forEach { cb ->
+            try { cb.onEvent(IpcEnvelope(serviceKey = eventKey, method = "__event__", argsBundle = bundle)) }
+            catch (e: Exception) { FalconLogger.w("Host", "event delivery failed: ${e.message}") }
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        eventCollector.shutdown()
     }
 }
