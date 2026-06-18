@@ -1,5 +1,6 @@
 package com.falcon.ipc.ksp.generator
 
+import com.google.devtools.ksp.getAllSuperTypes
 import com.google.devtools.ksp.symbol.ClassKind
 import com.google.devtools.ksp.symbol.KSClassDeclaration
 import com.google.devtools.ksp.symbol.KSType
@@ -17,6 +18,9 @@ object TypeCodec {
 
     fun isUnit(t: KSType) = t.declaration.qualifiedName?.asString() == "kotlin.Unit"
 
+    private fun isParcelable(decl: KSClassDeclaration): Boolean =
+        decl.getAllSuperTypes().any { it.declaration.qualifiedName?.asString() == "android.os.Parcelable" }
+
     fun put(t: KSType, bundleVar: String, key: String, valueExpr: String): String? {
         val q = t.declaration.qualifiedName?.asString() ?: return null
         primitives[q]?.let { suffix ->
@@ -27,10 +31,7 @@ object TypeCodec {
             if (decl.classKind == ClassKind.ENUM_CLASS) {
                 return "com.falcon.ipc.protocol.BundleCodec.putEnum($bundleVar, \"$key\", $valueExpr)"
             }
-            if (decl.superTypes.any {
-                    it.resolve().declaration.qualifiedName?.asString() == "android.os.Parcelable"
-                }
-            ) {
+            if (isParcelable(decl)) {
                 return "com.falcon.ipc.protocol.BundleCodec.putParcelable($bundleVar, \"$key\", $valueExpr)"
             }
         }
@@ -59,10 +60,7 @@ object TypeCodec {
             if (decl.classKind == ClassKind.ENUM_CLASS) {
                 return "com.falcon.ipc.protocol.BundleCodec.getEnum($bundleVar, \"$key\", $q::class.java)$nn"
             }
-            if (decl.superTypes.any {
-                    it.resolve().declaration.qualifiedName?.asString() == "android.os.Parcelable"
-                }
-            ) {
+            if (isParcelable(decl)) {
                 return "com.falcon.ipc.protocol.BundleCodec.getParcelable($bundleVar, \"$key\", $q::class.java)$nn"
             }
         }

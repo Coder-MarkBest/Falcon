@@ -3,11 +3,8 @@ package com.falcon.ipc.core
 import com.falcon.ipc.monitor.IpcInterceptor
 import com.falcon.ipc.monitor.MonitorFacade
 import com.falcon.ipc.protocol.IpcEnvelope
-import com.falcon.ipc.protocol.IpcSerializer
 import com.falcon.ipc.security.PermissionChecker
 import com.falcon.ipc.security.RateLimiter
-import java.lang.reflect.Method
-import java.util.concurrent.ConcurrentHashMap
 
 class MessageRouter(
     private val registry: ServiceRegistry,
@@ -16,7 +13,6 @@ class MessageRouter(
     private val rateLimiter: RateLimiter
 ) {
     private var interceptors: List<IpcInterceptor> = emptyList()
-    private val methodCache = ConcurrentHashMap<String, Method>()
 
     fun setInterceptors(interceptors: List<IpcInterceptor>) {
         this.interceptors = interceptors
@@ -28,9 +24,10 @@ class MessageRouter(
         }
         try {
             if (envelope.method == "__check_service__") {
-                val key = String(envelope.args ?: ByteArray(0), Charsets.UTF_8)
-                if (!permissionChecker.check(key, callerPackage)) return false
-                return registry.getService(key) != null
+                val key = envelope.argsBundle?.getString("key") ?: ""
+                val allowed = permissionChecker.check(key, callerPackage)
+                val exists = allowed && (registry.getDispatcher(key) != null || registry.getService(key) != null)
+                return android.os.Bundle().apply { putBoolean("r", exists) }
             }
 
             if (!permissionChecker.check(envelope.serviceKey, callerPackage)) {
@@ -38,26 +35,12 @@ class MessageRouter(
             }
 
             val dispatcher = registry.getDispatcher(envelope.serviceKey)
-            if (dispatcher != null && envelope.methodId != 0) {
-                return dispatcher.dispatch(envelope.methodId, envelope.argsBundle ?: android.os.Bundle())
-            }
-
-            // LEGACY reflective fallback for @IpcCallback / event methods (methodId == 0).
-            // @IpcMethod now dispatches via the generated IpcDispatcher above. Removed in Plan B.
-            val service = registry.getService(envelope.serviceKey)
                 ?: throw IllegalStateException("Service not found: ${envelope.serviceKey}")
-
-            val bytes = envelope.args ?: ByteArray(0)
-            val probeArgs = IpcSerializer.deserializeArgs(bytes, emptyArray())
-            val method = resolveMethod(service.javaClass, envelope.method, probeArgs.size)
-                ?: throw IllegalStateException("Method not found: ${envelope.method}")
-
             val startTime = System.currentTimeMillis()
             return try {
-                val args = IpcSerializer.deserializeArgs(bytes, method.parameterTypes)
-                val result = method.invoke(service, *args)
+                val out = dispatcher.dispatch(envelope.methodId, envelope.argsBundle ?: android.os.Bundle())
                 monitor.recordCall(envelope.serviceKey, envelope.method, true, System.currentTimeMillis() - startTime)
-                result
+                out
             } catch (e: Exception) {
                 monitor.recordCall(envelope.serviceKey, envelope.method, false, System.currentTimeMillis() - startTime)
                 throw e
@@ -65,30 +48,5 @@ class MessageRouter(
         } finally {
             rateLimiter.release(callerPid)
         }
-    }
-
-    private fun resolveMethod(clazz: Class<*>, methodName: String, argCount: Int): Method? {
-        val key = "${clazz.name}#$methodName/$argCount"
-        methodCache[key]?.let { return it }
-        val found = findMethod(clazz, methodName, argCount) ?: return null
-        found.isAccessible = true
-        methodCache[key] = found
-        return found
-    }
-
-    private fun findMethod(clazz: Class<*>, methodName: String, argCount: Int): Method? {
-        return clazz.methods.filter { it.name == methodName }
-            .let { candidates ->
-                if (candidates.size == 1) candidates.first()
-                else candidates.firstOrNull { it.parameterCount == argCount }
-                    ?: candidates.firstOrNull()
-            }
-            ?: clazz.interfaces.flatMap { it.methods.toList() }
-                .filter { it.name == methodName }
-                .let { candidates ->
-                    if (candidates.size == 1) candidates.first()
-                    else candidates.firstOrNull { it.parameterCount == argCount }
-                        ?: candidates.firstOrNull()
-                }
     }
 }

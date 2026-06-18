@@ -9,7 +9,6 @@ import com.falcon.ipc.security.PermissionChecker
 import com.falcon.ipc.security.RateLimiter
 import com.falcon.ipc.security.SignatureGuard
 import com.falcon.ipc.protocol.IpcEnvelope
-import com.falcon.ipc.protocol.IpcSerializer
 import com.falcon.ipc.service.IpcService
 import com.falcon.ipc.transport.TransportResult
 import com.falcon.ipc.util.CallerResolver
@@ -78,14 +77,11 @@ class FalconManager internal constructor(
                 val checkEnvelope = IpcEnvelope(
                     serviceKey = "",
                     method = "__check_service__",
-                    args = key.toByteArray(Charsets.UTF_8)
+                    argsBundle = android.os.Bundle().apply { putString("key", key) }
                 )
                 val result = peer.transport.invoke(checkEnvelope)
                 if (result is TransportResult.Success) {
-                    val data = result.data
-                    val hasService = if (data is ByteArray) {
-                        IpcSerializer.deserializeResult(data, Boolean::class.javaObjectType) == true
-                    } else false
+                    val hasService = (result.data as? android.os.Bundle)?.getBoolean("r") == true
                     if (hasService) {
                         val factory = config.generatedRegistries
                             .firstNotNullOfOrNull { it.proxyFactories[key] }

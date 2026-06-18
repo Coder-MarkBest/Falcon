@@ -17,13 +17,24 @@ class BinderTransport(
             if (response.isError) {
                 TransportResult.Error(response.errorCode, response.errorMessage)
             } else {
-                if (response.argsBundle != null) TransportResult.Success(response.argsBundle)
-                else TransportResult.Success(response.args)
+                TransportResult.Success(response.argsBundle)
             }
         } catch (e: Exception) {
             FalconLogger.e("BinderTransport", "Invoke failed", e)
             TransportResult.Error(-1, e.message ?: "Unknown error")
         }
+    }
+
+    override fun subscribe(eventKey: String, callback: com.falcon.ipc.aidl.IIpcEventCallback) {
+        host.subscribe(eventKey, callback)
+    }
+
+    override fun unsubscribe(eventKey: String, callback: com.falcon.ipc.aidl.IIpcEventCallback) {
+        host.unsubscribe(eventKey, callback)
+    }
+
+    override fun invokeCallback(envelope: IpcEnvelope, reply: com.falcon.ipc.aidl.IIpcEventCallback) {
+        host.invokeCallback(envelope, reply)
     }
 
     fun isAlive(): Boolean {

@@ -7,7 +7,6 @@ import java.util.UUID
 data class IpcEnvelope(
     val serviceKey: String = "",
     val method: String = "",
-    val args: ByteArray? = null,
     val requestId: String = UUID.randomUUID().toString(),
     val timestamp: Long = System.currentTimeMillis(),
     val traceId: String? = null,
@@ -21,7 +20,6 @@ data class IpcEnvelope(
     constructor(parcel: Parcel) : this(
         serviceKey = parcel.readString() ?: "",
         method = parcel.readString() ?: "",
-        args = parcel.createByteArray(),
         requestId = parcel.readString() ?: "",
         timestamp = parcel.readLong(),
         traceId = parcel.readString(),
@@ -35,7 +33,6 @@ data class IpcEnvelope(
     override fun writeToParcel(parcel: Parcel, flags: Int) {
         parcel.writeString(serviceKey)
         parcel.writeString(method)
-        parcel.writeByteArray(args)
         parcel.writeString(requestId)
         parcel.writeLong(timestamp)
         parcel.writeString(traceId)
@@ -61,10 +58,10 @@ data class IpcEnvelope(
             )
         }
 
-        fun response(requestId: String, data: ByteArray?): IpcEnvelope {
+        fun response(requestId: String, bundle: android.os.Bundle?): IpcEnvelope {
             return IpcEnvelope(
                 requestId = requestId,
-                args = data,
+                argsBundle = bundle,
                 isError = false
             )
         }
@@ -75,7 +72,6 @@ data class IpcEnvelope(
         if (other !is IpcEnvelope) return false
         return serviceKey == other.serviceKey &&
             method == other.method &&
-            args.contentEquals(other.args) &&
             requestId == other.requestId &&
             timestamp == other.timestamp &&
             traceId == other.traceId &&
@@ -87,7 +83,6 @@ data class IpcEnvelope(
     override fun hashCode(): Int {
         var result = serviceKey.hashCode()
         result = 31 * result + method.hashCode()
-        result = 31 * result + (args?.contentHashCode() ?: 0)
         result = 31 * result + requestId.hashCode()
         return result
     }

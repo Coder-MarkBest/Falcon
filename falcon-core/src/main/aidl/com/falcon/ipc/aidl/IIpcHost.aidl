@@ -8,4 +8,5 @@ interface IIpcHost {
     void subscribe(String eventKey, IIpcEventCallback callback);
     void unsubscribe(String eventKey, IIpcEventCallback callback);
     String getServiceInfo();
+    void invokeCallback(in IpcEnvelope request, IIpcEventCallback reply);
 }

@@ -10,4 +10,16 @@ sealed class TransportResult {
 interface IpcTransport {
     fun invoke(envelope: IpcEnvelope): TransportResult
     val maxPayloadSize: Int
+
+    fun subscribe(eventKey: String, callback: com.falcon.ipc.aidl.IIpcEventCallback) {
+        throw UnsupportedOperationException("subscribe not supported by this transport")
+    }
+
+    fun unsubscribe(eventKey: String, callback: com.falcon.ipc.aidl.IIpcEventCallback) {
+        throw UnsupportedOperationException("unsubscribe not supported by this transport")
+    }
+
+    fun invokeCallback(envelope: IpcEnvelope, reply: com.falcon.ipc.aidl.IIpcEventCallback) {
+        throw UnsupportedOperationException("invokeCallback not supported by this transport")
+    }
 }
