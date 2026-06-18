@@ -89,6 +89,11 @@ class IpcHostService : Service() {
         override fun getServiceInfo(): String {
             return serviceRegistry.getAllServices().keys.joinToString(",")
         }
+
+        override fun invokeCallback(request: IpcEnvelope, reply: IIpcEventCallback) {
+            // Wired to dispatcher in a later task (P2B Task 5)
+            FalconLogger.w("Host", "invokeCallback not yet wired")
+        }
     }
 
     fun emitEvent(eventKey: String, event: IpcEnvelope) {

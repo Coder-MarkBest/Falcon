@@ -26,6 +26,18 @@ class BinderTransport(
         }
     }
 
+    override fun subscribe(eventKey: String, callback: com.falcon.ipc.aidl.IIpcEventCallback) {
+        host.subscribe(eventKey, callback)
+    }
+
+    override fun unsubscribe(eventKey: String, callback: com.falcon.ipc.aidl.IIpcEventCallback) {
+        host.unsubscribe(eventKey, callback)
+    }
+
+    override fun invokeCallback(envelope: IpcEnvelope, reply: com.falcon.ipc.aidl.IIpcEventCallback) {
+        host.invokeCallback(envelope, reply)
+    }
+
     fun isAlive(): Boolean {
         return try {
             host.asBinder().pingBinder()

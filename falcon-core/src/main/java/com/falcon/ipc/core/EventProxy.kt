@@ -1,7 +1,9 @@
 package com.falcon.ipc.core
 
+import android.os.Bundle
 import com.falcon.ipc.aidl.IIpcEventCallback
 import com.falcon.ipc.protocol.IpcEnvelope
+import com.falcon.ipc.transport.IpcTransport
 import com.falcon.ipc.util.FalconLogger
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -35,5 +37,21 @@ object EventProxy {
             unsubscribe(callback)
             FalconLogger.d("EventProxy", "Unsubscribed from remote event: $eventKey")
         }
+    }
+
+    fun <T> typedRemoteFlow(
+        eventKey: String,
+        transport: IpcTransport,
+        decode: (Bundle) -> T
+    ): Flow<T> = callbackFlow {
+        val callback = object : IIpcEventCallback.Stub() {
+            override fun onEvent(event: IpcEnvelope) {
+                trySend(decode(event.argsBundle ?: android.os.Bundle()))
+            }
+
+            override fun getEventKey(): String = eventKey
+        }
+        transport.subscribe(eventKey, callback)
+        awaitClose { transport.unsubscribe(eventKey, callback) }
     }
 }
