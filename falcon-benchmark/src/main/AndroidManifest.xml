@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application
+        android:name=".BenchmarkApp"
         android:label="Falcon Benchmark"
         android:theme="@style/Theme.AppCompat.Light">
         <activity
@@ -11,9 +12,38 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- AIDL + Messenger host (existing) -->
         <service
             android:name=".BenchmarkHostService"
             android:exported="false"
             android:process=":benchmark_remote" />
+
+        <!-- Falcon host, in the remote process; bound directly by FalconTest -->
+        <service
+            android:name="com.falcon.ipc.core.IpcHostService"
+            android:exported="false"
+            android:process=":benchmark_remote">
+            <intent-filter>
+                <action android:name="com.falcon.ipc.HOST_SERVICE" />
+            </intent-filter>
+        </service>
+
+        <!-- ContentProvider, in the remote process -->
+        <provider
+            android:name=".BenchmarkProvider"
+            android:authorities="${applicationId}.falcon.benchmark.provider"
+            android:exported="false"
+            android:process=":benchmark_remote" />
+
+        <!-- Broadcast request receiver, in the remote process -->
+        <receiver
+            android:name=".BenchmarkRequestReceiver"
+            android:exported="false"
+            android:process=":benchmark_remote">
+            <intent-filter>
+                <action android:name="com.falcon.benchmark.BENCH_REQUEST" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>
