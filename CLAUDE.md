@@ -39,7 +39,7 @@ falcon-core (Android library — runtime framework)
        ↑
 falcon-ksp (KSP processor — generates Stub/Proxy from annotated interfaces)
        ↑
-falcon-benchmark (Android app — compares Falcon vs AIDL vs Messenger vs ContentProvider)
+falcon-benchmark (Android app — compares Falcon vs AIDL vs Messenger vs ContentProvider vs Broadcast)
 ```
 
 ### Core design: Binder transport
@@ -62,6 +62,12 @@ ALL IPC — `@IpcMethod` (request/response), `@IpcEvent`/`@IpcStream` (Flow), an
 - Removed legacy: `IpcSerializer`, dynamic `ProxyFactory`, `MessageRouter` reflective dispatch, `EventBus`, `StubGenerator`/`_Stub`, and the `IpcEnvelope` byte-array `args` field — the wire format is Bundle-only.
 
 > **Verification gap:** end-to-end generated dispatch (request/response, events, callbacks) is covered by JVM round-trip tests through the real generated code (`falcon-benchmark` `FalconGeneratedRoundTripTest`). True cross-process (two-process Binder) verification still requires a device/emulator and is not run in CI-less environments.
+
+### Benchmark (`falcon-benchmark`)
+`BenchmarkActivity` compares five cross-process mechanisms in one run, printing avg/p50/p99 per payload size:
+- **Raw AIDL**, **Messenger** (both via `BenchmarkHostService` in `:benchmark_remote`), **ContentProvider** (`BenchmarkProvider`), **Falcon** (binds `IpcHostService` directly + calls through the KSP-generated proxy over `BinderTransport` — steady-state call path, discovery excluded, same as AIDL), and **Broadcast** (real round-trip via AMS — *not* request/reply, included with a caveat).
+- The Falcon service is registered in the `:benchmark_remote` process by `BenchmarkApp` (per-process `Falcon.init { generated(...) }` + `register`).
+- Results are device-dependent; only meaningful within a single run on the same device. The APK must be run on a device/emulator — numbers are not produced by the build.
 
 ### Key packages in falcon-core
 - `com.falcon.ipc` — Falcon entry point, FalconConfig DSL
