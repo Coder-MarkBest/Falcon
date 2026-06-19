@@ -64,4 +64,16 @@ class MessengerTest {
             sendAndWait(MSG_ECHO_BYTES, bundle)
         }
     }
+
+    fun runLargeDataBenchmark(): BenchmarkResult {
+        val data = BenchmarkRunner.generateLargeData(256)
+        return BenchmarkRunner.run(
+            name = "Messenger",
+            dataSize = "Large (${data.size} bytes)",
+            iterations = 200
+        ) {
+            val bundle = Bundle().apply { putByteArray(KEY_DATA, data) }
+            sendAndWait(MSG_ECHO_BYTES, bundle)
+        }
+    }
 }
