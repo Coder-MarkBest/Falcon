@@ -72,14 +72,27 @@ class FalconManager internal constructor(
     fun start() {
         FalconLogger.enabled = true
         signatureGuard.enabled = config.security.signatureVerification
+        // Propagate cross-app trusted signatures to the IpcRegistryProvider so its
+        // signature enforcement (on call/query/insert) uses the same trust set as
+        // the IPC call path. The Provider may have been created before Falcon.init().
+        IpcRegistryProvider.trustedSignatures = config.security.trustedSignatures
         messageRouter.setInterceptors(config.interceptors)
 
         // Start IpcHostService so its hostBinder is available when peers call
         // ContentProvider.call("getHost").  The Service's android:process attribute
         // ensures it runs in the correct process; startService is a no-op if
         // already running.
+        //
+        // On Android 8+ a headless server may not have been foregrounded yet.
+        // startForegroundService is allowed in this case (unlike startService);
+        // IpcHostService.onCreate() immediately calls startForeground() and then
+        // hide the notification with stopForeground(STOP_FOREGROUND_REMOVE).
         try {
-            context.startService(Intent(context, IpcHostService::class.java))
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                context.startForegroundService(Intent(context, IpcHostService::class.java))
+            } else {
+                context.startService(Intent(context, IpcHostService::class.java))
+            }
         } catch (e: Exception) {
             FalconLogger.w("Falcon", "Failed to start IpcHostService: ${e.message}")
         }
@@ -248,6 +261,9 @@ class FalconManager internal constructor(
     fun removeConnectionStateCallback(callback: (IpcState, String) -> Unit) {
         peerManager?.removeConnectionStateCallback(callback)
     }
+
+    /** Low-level accessor for tests. Returns the current peer connection map (read-only). */
+    fun getPeerMap(): Map<String, PeerConnection> = peerManager?.getAllConnections() ?: emptyMap()
 
     fun stop() {
         peerManager?.stop()

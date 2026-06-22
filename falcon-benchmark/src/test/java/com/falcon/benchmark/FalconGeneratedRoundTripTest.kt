@@ -1,6 +1,7 @@
 package com.falcon.benchmark
 
 import android.os.Bundle
+import com.falcon.ipc.Falcon
 import com.falcon.ipc.aidl.IIpcEventCallback
 import com.falcon.ipc.protocol.IpcEnvelope
 import com.falcon.ipc.service.IpcReply
@@ -14,12 +15,14 @@ import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
 
 /**
  * Round-trip test exercising the REAL KSP-generated Proxy and Dispatcher in a single JVM process.
@@ -53,6 +56,10 @@ class FalconGeneratedRoundTripTest {
 
     @Before
     fun setUp() {
+        // The generated event proxy (ticks()) reads event buffer config from
+        // Falcon.getInstance(); initialize a minimal Falcon so it can resolve.
+        Falcon.init(RuntimeEnvironment.getApplication())
+
         val dispatcher = IBenchmarkFalconService_Dispatcher(impl)
         val collectScope = CoroutineScope(Dispatchers.Unconfined)
         val jobs = mutableMapOf<IIpcEventCallback, Job>()
@@ -159,5 +166,11 @@ class FalconGeneratedRoundTripTest {
             proxy.ticks().take(3).toList()
         }
         assertEquals(listOf(1, 2, 3), collected)
+    }
+
+    @After
+    fun tearDown() {
+        // Reset the Falcon singleton so each test gets a clean instance.
+        try { Falcon.getInstance().shutdown() } catch (_: Exception) {}
     }
 }

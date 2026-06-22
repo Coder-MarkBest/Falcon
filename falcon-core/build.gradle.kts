@@ -10,6 +10,8 @@ android {
     defaultConfig {
         minSdk = 24
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // R8/ProGuard rules shipped to consumers (required for minified builds; see file).
+        consumerProguardFiles("consumer-rules.pro")
     }
 
     buildFeatures {

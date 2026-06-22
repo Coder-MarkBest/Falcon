@@ -2,7 +2,7 @@
 
 Android 车载系统跨进程通信 (IPC) 框架，基于 **Binder + KSP 编译期代码生成**，零反射，类型安全。
 
-> 📘 **集成与使用**：见 [docs/USAGE.md](docs/USAGE.md)。可运行示例见 `falcon-demo` 模块（双进程 App，每个按钮演示一种用法）。
+> 📘 **集成与使用**：见 [docs/USAGE.md](docs/USAGE.md)。可运行示例见 `falcon-cross-server` + `falcon-cross-client` 模块（两个独立签名 APK，模拟多供应商车载系统跨 App 通信）。
 
 ## 设计目标
 

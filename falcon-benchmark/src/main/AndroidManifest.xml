@@ -1,5 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Required since Android P (API 28) for any Service that calls startForeground().
+         API 34+ also requires a type-specific permission matching foregroundServiceType. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+
     <application
         android:name=".BenchmarkApp"
         android:label="Falcon Benchmark"
@@ -30,6 +36,7 @@
         <service
             android:name="com.falcon.ipc.core.IpcHostService"
             android:exported="false"
+            android:foregroundServiceType="dataSync"
             android:process=":benchmark_remote">
             <intent-filter>
                 <action android:name="com.falcon.ipc.HOST_SERVICE" />

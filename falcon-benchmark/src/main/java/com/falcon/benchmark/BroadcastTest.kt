@@ -8,13 +8,14 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
-/** Real cross-process round-trip over AMS: request broadcast -> remote receiver -> reply broadcast. */
+/** Real cross-process round-trip over AMS: request broadcast → remote receiver → reply broadcast. */
 class BroadcastTest(private val context: Context) {
     companion object {
         const val ACTION_REQUEST = "com.falcon.benchmark.BENCH_REQUEST"
         const val ACTION_REPLY = "com.falcon.benchmark.BENCH_REPLY"
         const val EXTRA_ID = "id"
         const val EXTRA_DATA = "data"
+        private const val TIMEOUT_S = 10L
     }
 
     private val ids = AtomicInteger(0)
@@ -43,16 +44,24 @@ class BroadcastTest(private val context: Context) {
             putExtra(EXTRA_ID, ids.incrementAndGet())
             putExtra(EXTRA_DATA, data)
         })
-        latch?.await(5, TimeUnit.SECONDS)
+        latch?.await(TIMEOUT_S, TimeUnit.SECONDS)
     }
 
     fun runSmallDataBenchmark(): BenchmarkResult {
         val data = BenchmarkRunner.generateSmallData().toByteArray()
-        return BenchmarkRunner.run("Broadcast", "Small (${data.size} bytes)", iterations = 300) { roundTrip(data) }
+        return BenchmarkRunner.run("Broadcast", "Small (${data.size} bytes)", iterations = 300,
+            block = { roundTrip(data) })
     }
 
     fun runMediumDataBenchmark(): BenchmarkResult {
         val data = BenchmarkRunner.generateMediumData(16)
-        return BenchmarkRunner.run("Broadcast", "Medium (${data.size} bytes)", iterations = 200) { roundTrip(data) }
+        return BenchmarkRunner.run("Broadcast", "Medium (${data.size} bytes)", iterations = 200,
+            block = { roundTrip(data) })
+    }
+
+    fun runLargeDataBenchmark(): BenchmarkResult {
+        val data = BenchmarkRunner.generateLargeData(256)
+        return BenchmarkRunner.run("Broadcast", "Large (${data.size} bytes)", iterations = 100,
+            block = { roundTrip(data) })
     }
 }

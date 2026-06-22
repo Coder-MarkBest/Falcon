@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Required since Android P (API 28) for any Service that calls startForeground().
+         API 34+ also requires a type-specific permission matching foregroundServiceType. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+
+    <application
+        android:name=".CrossServerApp"
+        android:label="Falcon Cross Server">
+
+        <!-- Minimal launcher so the server can be foregrounded once.
+             Android 8+ blocks background Service starts unless the app
+             has been visible at least once. -->
+        <activity
+            android:name=".ServerActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:taskAffinity="">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <service
+            android:name="com.falcon.ipc.core.IpcHostService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync"
+            android:process=":server" />
+
+        <provider
+            android:name="com.falcon.ipc.core.IpcRegistryProvider"
+            android:authorities="${applicationId}.falcon.registry"
+            android:exported="true"
+            android:process=":server" />
+
+    </application>
+</manifest>

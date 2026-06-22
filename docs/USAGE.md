@@ -1,7 +1,7 @@
 # Falcon IPC 集成与使用指南
 
 本文档面向**在自己的工程里集成 Falcon** 的开发者，覆盖从依赖配置到 5 种调用模式的完整用法。
-配套可运行示例见 `:falcon-demo` 模块（双进程 App，每个按钮对应一种用法）。
+配套可运行示例见 `:falcon-cross-server` + `:falcon-cross-client` 模块（两个独立签名 APK，模拟多供应商车载系统跨 App 通信）。
 
 > 想先看整体设计与架构，读 [README.md](../README.md)。
 > 想看两种服务发现机制的对比，读各自源码注释（`IpcRegistryProvider.call` / `PeerManager.connectPeer`）。
@@ -114,7 +114,7 @@ Parcelable 模型（推荐用 `@Parcelize`）：
 data class DemoUser(val id: Int, val name: String, val vip: Boolean) : Parcelable
 ```
 
-完整示例见 [`IDemoService.kt`](../falcon-demo/src/main/java/com/falcon/demo/IDemoService.kt)。
+完整示例见 [`ICrossService.kt`](../falcon-cross-server/src/main/java/com/falcon/cross/shared/ICrossService.kt)。
 
 ---
 
@@ -206,7 +206,7 @@ class DemoApp : Application() {
 ## 6. 五种调用模式
 
 客户端用 `Falcon.getService<T>()` 拿到代理后，像调用本地对象一样使用。
-以下片段摘自 [`DemoActivity.kt`](../falcon-demo/src/main/java/com/falcon/demo/DemoActivity.kt)。
+以下片段摘自 [`CrossClientActivity.kt`](../falcon-cross-client/src/main/java/com/falcon/cross/client/CrossClientActivity.kt)。
 
 ### 6.1 请求/响应 `@IpcMethod`
 
@@ -405,10 +405,20 @@ KSP 增量缓存不一致。执行对应模块的 `clean` 后重编：`./gradlew
 
 ## 运行示例 App
 
+跨 App 示例由两个独立签名的 APK 组成，模拟多供应商车载系统：
+
 ```bash
-./gradlew :falcon-demo:assembleDebug          # 构建 APK
-./gradlew :falcon-demo:testDebugUnitTest      # JVM 单进程往返测试（含参数名碰撞回归）
+# 构建两个 APK（各自使用独立 keystore 签名）
+./gradlew :falcon-cross-server:assembleDebug
+./gradlew :falcon-cross-client:assembleDebug
+
+# 安装到设备
+adb install -r falcon-cross-server/build/outputs/apk/debug/falcon-cross-server-debug.apk
+adb install -r falcon-cross-client/build/outputs/apk/debug/falcon-cross-client-debug.apk
 ```
 
-将 APK 装到设备/模拟器，点击每个按钮观察对应模式的日志输出。
-真正的跨进程（双 Linux 进程 Binder）验证只能在设备上跑——构建本身不产出运行结果。
+打开 CrossClient App，点击每个按钮观察跨 App IPC 的日志输出。
+
+> 两个 APK 使用不同的 keystore 签名（`cross-server.keystore` / `cross-client.keystore`），
+> 通过 `trustedSignatures` 互信——模拟真实多供应商证书白名单场景。
+> 签名校验默认开启（`signatureVerification = true`）。

@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Client declares which peer packages it discovers (Android 11+ visibility). -->
+    <queries>
+        <package android:name="com.falcon.cross.server" />
+    </queries>
+
+    <application
+        android:name=".CrossClientApp"
+        android:label="Falcon Cross Client"
+        android:theme="@style/CrossClientTheme">
+
+        <activity
+            android:name=".CrossClientActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Falcon service registry — required by FalconManager.start() even in
+             a pure-client APK, because it always constructs a self-registry URI.
+             No IpcHostService needed here since this APK doesn't serve IPC calls. -->
+        <provider
+            android:name="com.falcon.ipc.core.IpcRegistryProvider"
+            android:authorities="${applicationId}.falcon.registry"
+            android:exported="true" />
+
+    </application>
+</manifest>

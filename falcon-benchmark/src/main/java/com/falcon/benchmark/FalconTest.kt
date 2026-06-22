@@ -9,8 +9,11 @@ import com.falcon.ipc.transport.IpcTransport
  * AIDL test does (pre-bound, steady state) — discovery is intentionally excluded.
  */
 class FalconTest(transport: IpcTransport) {
-    private val proxy: IBenchmarkFalconService =
+    val proxy: IBenchmarkFalconService =
         BenchmarkFalconService_Proxy(transport, IBenchmarkFalconService::class.qualifiedName!!)
+
+    /** Single echoString call — used by cold-call and concurrent benchmarks. */
+    fun echoSmall(): String = proxy.echoString(BenchmarkRunner.generateSmallData())
 
     fun runSmallDataBenchmark(): BenchmarkResult {
         val data = BenchmarkRunner.generateSmallData()

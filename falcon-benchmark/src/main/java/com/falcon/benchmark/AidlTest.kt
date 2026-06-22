@@ -4,11 +4,15 @@ import com.falcon.benchmark.aidl.IBenchmarkService
 
 class AidlTest {
 
-    private var service: IBenchmarkService? = null
+    @Volatile var service: IBenchmarkService? = null
+        private set
 
     fun setService(service: IBenchmarkService) {
         this.service = service
     }
+
+    /** Single echoString call — used by cold-call and concurrent benchmarks. */
+    fun echoSmall(): String? = service?.echoString(BenchmarkRunner.generateSmallData())
 
     fun runSmallDataBenchmark(): BenchmarkResult {
         val data = BenchmarkRunner.generateSmallData()

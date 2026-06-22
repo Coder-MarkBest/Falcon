@@ -27,9 +27,9 @@ Android 车载系统跨进程通信(IPC)框架，基于 Binder + KSP 编译期�
 # Build benchmark APK
 ./gradlew :falcon-benchmark:assembleDebug
 
-# Build the demo APK / run its JVM round-trip tests
-./gradlew :falcon-demo:assembleDebug
-./gradlew :falcon-demo:testDebugUnitTest
+# Build cross-app demo APKs (two independently-signed APKs)
+./gradlew :falcon-cross-server:assembleDebug
+./gradlew :falcon-cross-client:assembleDebug
 ```
 
 ## Architecture
@@ -43,14 +43,17 @@ falcon-core (Android library — runtime framework)
        ↑
 falcon-ksp (KSP processor — generates Stub/Proxy from annotated interfaces)
        ↑
-falcon-benchmark (Android app — compares Falcon vs AIDL vs Messenger vs ContentProvider vs Broadcast)
-falcon-demo      (Android app — two-process integration example; one button per usage pattern)
+falcon-benchmark    (Android app — compares Falcon vs AIDL vs Messenger vs ContentProvider vs Broadcast)
+falcon-cross-server (Headless server APK — all IPC patterns, independently signed)
+falcon-cross-client (Client APK with UI — discovers cross-server via cross-app IPC)
+falcon-gradle-plugin (AGP plugin — auto-injects <queries> for peerPackages)
 ```
 
 Integration/usage guide for third-party consumers: `docs/USAGE.md`. The runnable
-example is `falcon-demo` (`:server` process hosts the service, main process is the
-client); `falcon-demo` `DemoRoundTripTest` is a JVM round-trip over the real generated
-code and includes a regression test for proxy parameter-name collision (a param named `b`).
+cross-app example is `falcon-cross-server` + `falcon-cross-client` (two independently-signed
+APKs with mutual certificate trust, simulating a multi-vendor automotive system).
+The benchmark module's `FalconGeneratedRoundTripTest` provides JVM round-trip coverage
+over the real generated Proxy/Dispatcher code.
 
 ### Core design: Binder transport
 - All calls go over Binder (`IIpcHost.invoke(IpcEnvelope)`); payloads are kept under the ~1MB Binder transaction limit (no large-payload use case in scope)

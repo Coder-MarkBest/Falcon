@@ -17,9 +17,16 @@ class ContentProviderTest(private val context: Context) {
     }
 
     fun runMediumDataBenchmark(): BenchmarkResult {
-        // 16KB encoded as a String value column
         val data = Base64.encodeToString(BenchmarkRunner.generateMediumData(16), Base64.NO_WRAP)
         return BenchmarkRunner.run("ContentProvider", "Medium (~16384 bytes)", iterations = 300) {
+            roundTrip(data)
+        }
+    }
+
+    fun runLargeDataBenchmark(): BenchmarkResult {
+        // 256KB encoded as Base64 — tests ContentProvider throughput with larger column values
+        val data = Base64.encodeToString(BenchmarkRunner.generateLargeData(256), Base64.NO_WRAP)
+        return BenchmarkRunner.run("ContentProvider", "Large (~256KB)", iterations = 100) {
             roundTrip(data)
         }
     }

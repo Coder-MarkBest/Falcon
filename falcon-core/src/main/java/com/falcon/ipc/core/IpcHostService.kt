@@ -1,8 +1,12 @@
 package com.falcon.ipc.core
 
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
 import android.os.Binder
+import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
 import com.falcon.ipc.Falcon
@@ -52,6 +56,44 @@ class IpcHostService : Service() {
         callerResolver = falconManager.callerResolver
         messageRouter = falconManager.messageRouter
         threadPool = falconManager.threadPool
+
+        // Running as a foreground service prevents Android from FREEZING the
+        // hosting process when idle (critical for headless server APKs with no
+        // visible Activity). Android's cached-app freezer freezes any process
+        // that is not TOP/foreground/bound, and a synchronous Binder transaction
+        // to a frozen process fails ("Sync transaction while frozen") and kills it.
+        //
+        // NOTE: We must KEEP the notification. On Android 9+ a foreground service
+        // is required to show an ongoing notification — calling stopForeground()
+        // to hide it would also drop foreground state and re-expose the process to
+        // the freezer (the original bug). The notification is the price of staying
+        // unfrozen without a visible Activity.
+        //
+        // Manifest must declare FOREGROUND_SERVICE + FOREGROUND_SERVICE_DATA_SYNC
+        // (API 34+) and the <service> must have foregroundServiceType="dataSync".
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            try {
+                val channelId = "falcon_ipc"
+                val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+                nm.createNotificationChannel(
+                    NotificationChannel(channelId, "Falcon IPC", NotificationManager.IMPORTANCE_LOW)
+                )
+                val notification = Notification.Builder(this, channelId)
+                    .setContentTitle("Falcon IPC")
+                    .setContentText("IPC service running")
+                    .setSmallIcon(android.R.drawable.ic_dialog_info)
+                    .build()
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    startForeground(1, notification, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+                } else {
+                    @Suppress("DEPRECATION")
+                    startForeground(1, notification)
+                }
+            } catch (e: Exception) {
+                FalconLogger.w("Host", "startForeground failed: ${e.message}")
+            }
+        }
+
         // Expose hostBinder for discovery via ContentProvider.call("getHost")
         IpcHostService.hostBinder = hostBinder
     }
