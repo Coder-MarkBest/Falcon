@@ -13,9 +13,16 @@
             </intent-filter>
         </activity>
 
-        <!-- AIDL + Messenger host (existing) -->
+        <!-- AIDL host (existing) -->
         <service
             android:name=".BenchmarkHostService"
+            android:exported="false"
+            android:process=":benchmark_remote" />
+
+        <!-- Messenger host — separate service to avoid Android deduplicating binds
+             to the same component name (which would give MessengerTest an AIDL binder). -->
+        <service
+            android:name=".BenchmarkMessengerService"
             android:exported="false"
             android:process=":benchmark_remote" />
 
@@ -29,7 +36,16 @@
             </intent-filter>
         </service>
 
-        <!-- ContentProvider, in the remote process -->
+        <!-- Falcon service registry — required by PeerManager for discovery.
+             The authority must match FalconManager's hardcoded URI pattern:
+             content://${applicationId}.falcon.registry/services -->
+        <provider
+            android:name="com.falcon.ipc.core.IpcRegistryProvider"
+            android:authorities="${applicationId}.falcon.registry"
+            android:exported="false"
+            android:process=":benchmark_remote" />
+
+        <!-- ContentProvider benchmark target, in the remote process -->
         <provider
             android:name=".BenchmarkProvider"
             android:authorities="${applicationId}.falcon.benchmark.provider"

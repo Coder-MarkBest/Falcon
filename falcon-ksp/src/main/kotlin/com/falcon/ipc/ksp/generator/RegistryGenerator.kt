@@ -11,6 +11,7 @@ object RegistryGenerator {
         val pkg: String,                       // package of generated dispatcher/proxy classes
         val dispatcherClassName: String,       // e.g. IBenchmarkFalconService_Dispatcher
         val proxyClassName: String,            // e.g. BenchmarkFalconService_Proxy
+        val schemaHash: Int,                   // wire-contract hash (see SchemaHasher)
         val containingFile: KSFile
     )
 
@@ -60,6 +61,15 @@ object RegistryGenerator {
         entries.forEachIndexed { idx, e ->
             val trailing = if (idx < entries.size - 1) "," else ""
             sb.appendLine("        \"${e.serviceKeyQualifiedName}\" to { t, k -> ${e.pkg}.${e.proxyClassName}(t, k) }$trailing")
+        }
+        sb.appendLine("    )")
+        sb.appendLine()
+
+        // interfaceSchemas — wire-contract hash per service, checked once at discovery.
+        sb.appendLine("    override val interfaceSchemas: Map<String, Int> = mapOf(")
+        entries.forEachIndexed { idx, e ->
+            val trailing = if (idx < entries.size - 1) "," else ""
+            sb.appendLine("        \"${e.serviceKeyQualifiedName}\" to ${e.schemaHash}$trailing")
         }
         sb.appendLine("    )")
         sb.appendLine()

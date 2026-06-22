@@ -18,4 +18,6 @@ rootProject.name = "Falcon"
 include(":falcon-annotations")
 include(":falcon-core")
 include(":falcon-ksp")
-include(":falcon-benchmark")
+//include(":falcon-benchmark")
+include(":falcon-demo")
+include(":falcon-gradle-plugin")

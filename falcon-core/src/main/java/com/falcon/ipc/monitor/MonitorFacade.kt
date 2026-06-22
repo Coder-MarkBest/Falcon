@@ -17,8 +17,10 @@ data class MonitorConfig(
 
 class MonitorFacade {
     private var level: MonitorLevel = MonitorLevel.NONE
-    private var config = MonitorConfig()
+    @Volatile private var config = MonitorConfig()
+    // Per-key stats + per-key latency ring buffers for time-window calculation
     private val statsMap = ConcurrentHashMap<String, IpcCallStats>()
+    private val latencyWindows = ConcurrentHashMap<String, ArrayDeque<Pair<Long, Long>>>() // (timestamp, latencyMs)
     private val _statsFlow = MutableStateFlow<List<IpcCallStats>>(emptyList())
     private val diagnostics = DiagnosticsManager()
 
@@ -35,7 +37,7 @@ class MonitorFacade {
     }
 
     fun setMonitorConfig(block: MonitorConfig.() -> Unit) {
-        config.block()
+        config.apply(block)
         FalconLogger.d("Monitor", "Config updated: stats=${config.enableCallStats} tracing=${config.enableTracing}")
     }
 
@@ -43,6 +45,8 @@ class MonitorFacade {
         if (!config.enableCallStats) return
 
         val key = "$service#$method"
+        val now = System.currentTimeMillis()
+
         val stats = statsMap.getOrPut(key) {
             IpcCallStats(serviceName = service, methodName = method)
         }
@@ -52,7 +56,21 @@ class MonitorFacade {
             if (success) stats.successCount++ else stats.failCount++
             stats.totalLatencyMs += latencyMs
             if (latencyMs > stats.maxLatencyMs) stats.maxLatencyMs = latencyMs
-            stats.lastCallTime = System.currentTimeMillis()
+            stats.lastCallTime = now
+        }
+
+        // Time-windowed latency tracking
+        val windowMs = config.statsWindowSeconds * 1000L
+        if (windowMs > 0) {
+            val window = latencyWindows.getOrPut(key) { ArrayDeque() }
+            synchronized(window) {
+                // Prune entries outside the window
+                val cutoff = now - windowMs
+                while (window.isNotEmpty() && window.first().first < cutoff) {
+                    window.removeFirst()
+                }
+                window.addLast(now to latencyMs)
+            }
         }
 
         _statsFlow.value = statsMap.values.toList()
@@ -60,7 +78,7 @@ class MonitorFacade {
         // Also record to diagnostics
         if (diagnostics.isEnabled()) {
             diagnostics.record(DiagnosticEntry(
-                timestamp = System.currentTimeMillis(),
+                timestamp = now,
                 serviceKey = service,
                 method = method,
                 latencyMs = latencyMs,
@@ -68,6 +86,15 @@ class MonitorFacade {
                 transportType = "BINDER",
                 requestId = ""
             ))
+        }
+    }
+
+    /** Get time-windowed average latency for a specific key (or -1 if no data). */
+    fun getWindowedAvgLatencyMs(key: String): Double {
+        val window = latencyWindows[key] ?: return -1.0
+        synchronized(window) {
+            if (window.isEmpty()) return -1.0
+            return window.map { it.second }.average()
         }
     }
 
@@ -81,6 +108,7 @@ class MonitorFacade {
 
     fun reset() {
         statsMap.clear()
+        latencyWindows.clear()
         _statsFlow.value = emptyList()
     }
 }

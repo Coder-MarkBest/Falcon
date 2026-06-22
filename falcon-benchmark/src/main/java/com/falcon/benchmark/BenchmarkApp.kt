@@ -12,7 +12,14 @@ class BenchmarkApp : Application() {
         super.onCreate()
         // Only the remote process hosts the Falcon service (where IpcHostService runs).
         if (currentProcessName().endsWith(":benchmark_remote")) {
-            val falcon = Falcon.init(this) { generated(BenchmarkFalconGeneratedRegistry) }
+            val falcon = Falcon.init(this) {
+                generated(BenchmarkFalconGeneratedRegistry)
+                security {
+                    // 0 = disable rate limiting for benchmark
+                    rateLimitPerSecond = 0
+                    maxConcurrentCalls = 0
+                }
+            }
             falcon.register(IBenchmarkFalconService::class, BenchmarkFalconServiceImpl())
         }
     }

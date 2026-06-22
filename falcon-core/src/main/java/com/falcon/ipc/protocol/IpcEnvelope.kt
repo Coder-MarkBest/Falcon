@@ -2,12 +2,14 @@ package com.falcon.ipc.protocol
 
 import android.os.Parcel
 import android.os.Parcelable
-import java.util.UUID
 
 data class IpcEnvelope(
     val serviceKey: String = "",
     val method: String = "",
-    val requestId: String = UUID.randomUUID().toString(),
+    // Empty by default: synchronous request/response returns directly and callbacks
+    // correlate via their own Binder, so no per-call id is needed. Avoids a SecureRandom
+    // UUID allocation on every IPC call. Set explicitly only when tracing/correlation needs it.
+    val requestId: String = "",
     val timestamp: Long = System.currentTimeMillis(),
     val traceId: String? = null,
     val isError: Boolean = false,
@@ -84,6 +86,11 @@ data class IpcEnvelope(
         var result = serviceKey.hashCode()
         result = 31 * result + method.hashCode()
         result = 31 * result + requestId.hashCode()
+        result = 31 * result + timestamp.hashCode()
+        result = 31 * result + (traceId?.hashCode() ?: 0)
+        result = 31 * result + isError.hashCode()
+        result = 31 * result + errorCode
+        result = 31 * result + errorMessage.hashCode()
         return result
     }
 }

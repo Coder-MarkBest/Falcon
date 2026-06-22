@@ -33,3 +33,7 @@ inline fun <reified T : IpcService> FalconManager.register(impl: T) {
 inline fun <reified T : IpcService> FalconManager.getService(): T? {
     return getService(T::class)
 }
+
+suspend inline fun <reified T : IpcService> FalconManager.getServiceSuspending(): T? {
+    return getServiceSuspending(T::class)
+}

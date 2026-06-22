@@ -82,6 +82,7 @@ class FalconProcessor(
                         pkg = serviceInterface.packageName.asString(),
                         dispatcherClassName = "${interfaceName}_Dispatcher",
                         proxyClassName = "${interfaceName.removePrefix("I")}_Proxy",
+                        schemaHash = com.falcon.ipc.ksp.generator.SchemaHasher.hash(annotatedMethods),
                         containingFile = containingFile
                     )
                 }

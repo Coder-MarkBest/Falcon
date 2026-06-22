@@ -67,8 +67,8 @@ class FalconGeneratedRoundTripTest {
             }
 
             override fun invokeCallback(envelope: IpcEnvelope, reply: IIpcEventCallback) {
-                dispatcher.invokeCallback(envelope.methodId, envelope.argsBundle ?: Bundle()) { b ->
-                    reply.onEvent(IpcEnvelope(requestId = envelope.requestId, argsBundle = b))
+                dispatcher.invokeCallback(envelope.methodId, envelope.argsBundle ?: Bundle()) { env ->
+                    reply.onEvent(env.copy(requestId = envelope.requestId))
                 }
             }
 

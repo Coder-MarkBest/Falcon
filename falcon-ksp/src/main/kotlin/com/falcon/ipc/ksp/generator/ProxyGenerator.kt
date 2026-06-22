@@ -103,7 +103,7 @@ object ProxyGenerator {
         }
         val elemTypeName = renderTypeName(elemType)
 
-        val getExpr = TypeCodec.get(elemType, "b", "r")
+        val getExpr = TypeCodec.get(elemType, "__falconBundle", "r")
         if (getExpr == null) {
             logger.error(
                 "@IpcEvent/@IpcStream element type ${elemType.declaration.qualifiedName?.asString() ?: "?"} " +
@@ -113,7 +113,11 @@ object ProxyGenerator {
         }
 
         sb.appendLine("    override fun $methodName($flowParamDecls): kotlinx.coroutines.flow.Flow<$elemTypeName> =")
-        sb.appendLine("        com.falcon.ipc.core.EventProxy.typedRemoteFlow(serviceKey + \"#$id\", transport) { b -> $getExpr }")
+        sb.appendLine("        com.falcon.ipc.core.EventProxy.typedRemoteFlow(")
+        sb.appendLine("            serviceKey + \"#$id\", transport,")
+        sb.appendLine("            capacity = com.falcon.ipc.Falcon.getInstance().eventBufferCapacity,")
+        sb.appendLine("            overflow = com.falcon.ipc.Falcon.getInstance().eventOverflow")
+        sb.appendLine("        ) { __falconBundle -> $getExpr }")
         sb.appendLine()
     }
 
@@ -147,8 +151,7 @@ object ProxyGenerator {
             val pQN = resolvedType.declaration.qualifiedName?.asString()
             val pType = if (pQN == IPC_REPLY) {
                 val typeArg = resolvedType.arguments.firstOrNull()?.type?.resolve()
-                    ?.declaration?.qualifiedName?.asString() ?: "Any"
-                val simpleArg = renderQualifiedName(typeArg)
+                val simpleArg = if (typeArg != null) TypeCodec.render(typeArg) else "Any"
                 "com.falcon.ipc.service.IpcReply<$simpleArg>"
             } else {
                 renderTypeName(resolvedType)
@@ -157,13 +160,13 @@ object ProxyGenerator {
         }
 
         sb.appendLine("    override fun $methodName($paramDecls) {")
-        sb.appendLine("        val b = android.os.Bundle()")
+        sb.appendLine("        val __falconArgs = android.os.Bundle()")
 
         // Encode each regular (non-reply) param positionally with key = index among regular params
         regularParams.forEachIndexed { i, param ->
             val pName = param.name?.asString() ?: "arg$i"
             val pType = param.type.resolve()
-            val putExpr = TypeCodec.put(pType, "b", i.toString(), pName)
+            val putExpr = TypeCodec.put(pType, "__falconArgs", i.toString(), pName)
             if (putExpr == null) {
                 logger.error(
                     "@IpcCallback param type ${pType.declaration.qualifiedName?.asString() ?: "?"} " +
@@ -197,17 +200,29 @@ object ProxyGenerator {
 
         val replyParamName = replyParam?.name?.asString() ?: "reply"
 
-        sb.appendLine("        val stub = object : com.falcon.ipc.aidl.IIpcEventCallback.Stub() {")
+        sb.appendLine("        val __falconStub = object : com.falcon.ipc.aidl.IIpcEventCallback.Stub() {")
         sb.appendLine("            override fun onEvent(event: com.falcon.ipc.protocol.IpcEnvelope) {")
-        sb.appendLine("                val out = event.argsBundle ?: android.os.Bundle()")
-        sb.appendLine("                $replyParamName.onResult($getReplyExpr)")
+        sb.appendLine("                if (event.isError) {")
+        sb.appendLine("                    $replyParamName.onError(event.errorCode, event.errorMessage)")
+        sb.appendLine("                } else {")
+        sb.appendLine("                    val out = event.argsBundle ?: android.os.Bundle()")
+        sb.appendLine("                    try {")
+        sb.appendLine("                        $replyParamName.onResult($getReplyExpr)")
+        sb.appendLine("                    } catch (e: Exception) {")
+        sb.appendLine("                        $replyParamName.onError(com.falcon.ipc.protocol.ErrorCode.SERIALIZATION_ERROR, \"Failed to decode reply: \${e.message}\")")
+        sb.appendLine("                    }")
+        sb.appendLine("                }")
         sb.appendLine("            }")
         sb.appendLine("            override fun getEventKey(): String = \"\"")
         sb.appendLine("        }")
-        sb.appendLine("        transport.invokeCallback(")
-        sb.appendLine("            com.falcon.ipc.protocol.IpcEnvelope(serviceKey = serviceKey, method = \"$methodName\", methodId = $id, argsBundle = b),")
-        sb.appendLine("            stub")
-        sb.appendLine("        )")
+        sb.appendLine("        try {")
+        sb.appendLine("            transport.invokeCallback(")
+        sb.appendLine("                com.falcon.ipc.protocol.IpcEnvelope(serviceKey = serviceKey, method = \"$methodName\", methodId = $id, argsBundle = __falconArgs),")
+        sb.appendLine("                __falconStub")
+        sb.appendLine("            )")
+        sb.appendLine("        } catch (e: Exception) {")
+        sb.appendLine("            $replyParamName.onError(com.falcon.ipc.protocol.ErrorCode.TRANSPORT_ERROR, \"invokeCallback failed: \${e.message}\")")
+        sb.appendLine("        }")
         sb.appendLine("    }")
         sb.appendLine()
     }
@@ -225,11 +240,11 @@ object ProxyGenerator {
         val isSuspend = method.modifiers.contains(Modifier.SUSPEND)
         val params = method.parameters
 
+        // Render param + return types via the shared renderer so generic arguments
+        // (List<T>, Map<K, V>) and nullability are preserved.
         val paramDeclarations = params.joinToString(", ") { param ->
             val paramName = param.name?.asString() ?: "arg${params.indexOf(param)}"
-            val paramType = param.type.resolve().declaration.qualifiedName?.asString()
-                ?: param.type.resolve().declaration.simpleName.asString()
-            "$paramName: $paramType"
+            "$paramName: ${TypeCodec.render(param.type.resolve())}"
         }
 
         val suspendModifier = if (isSuspend) "suspend " else ""
@@ -238,28 +253,19 @@ object ProxyGenerator {
             ?: returnTypeResolved?.declaration?.simpleName?.asString()
             ?: "Any?"
 
-        val simpleReturnType = when (returnTypeDef) {
-            "kotlin.Int" -> "Int"
-            "kotlin.Long" -> "Long"
-            "kotlin.Float" -> "Float"
-            "kotlin.Double" -> "Double"
-            "kotlin.Boolean" -> "Boolean"
-            "kotlin.String" -> "String"
-            "kotlin.Unit" -> "Unit"
-            "kotlin.ByteArray" -> "ByteArray"
-            "kotlin.Any" -> "Any?"
-            else -> returnTypeDef.substringAfterLast(".")
-        }
+        val simpleReturnType = if (returnTypeResolved != null) TypeCodec.render(returnTypeResolved) else "Any?"
 
         val methodId = MethodIds.of(method)
 
+        // Generated locals are prefixed with `__falcon` so they cannot collide
+        // with user-declared parameter names (e.g. a param literally named `b`).
         sb.appendLine("    override ${suspendModifier}fun $methodName($paramDeclarations): $simpleReturnType {")
-        sb.appendLine("        val b = Bundle()")
+        sb.appendLine("        val __falconArgs = Bundle()")
 
         params.forEachIndexed { i, param ->
             val paramName = param.name?.asString() ?: "arg$i"
             val paramType = param.type.resolve()
-            val putExpr = TypeCodec.put(paramType, "b", i.toString(), paramName)
+            val putExpr = TypeCodec.put(paramType, "__falconArgs", i.toString(), paramName)
             if (putExpr == null) {
                 logger.error(
                     "@IpcMethod param type ${paramType.declaration.qualifiedName?.asString() ?: "?"} " +
@@ -270,16 +276,16 @@ object ProxyGenerator {
             sb.appendLine("        $putExpr")
         }
 
-        sb.appendLine("        val env = com.falcon.ipc.protocol.IpcEnvelope(serviceKey = serviceKey, method = \"$methodName\", methodId = $methodId, argsBundle = b)")
-        sb.appendLine("        val result = transport.invoke(env)")
-        sb.appendLine("        return when (result) {")
+        sb.appendLine("        val __falconEnv = com.falcon.ipc.protocol.IpcEnvelope(serviceKey = serviceKey, method = \"$methodName\", methodId = $methodId, argsBundle = __falconArgs)")
+        sb.appendLine("        val __falconResult = transport.invoke(__falconEnv)")
+        sb.appendLine("        return when (__falconResult) {")
         sb.appendLine("            is TransportResult.Success -> {")
-        sb.appendLine("                val out = (result.data as? Bundle) ?: Bundle()")
+        sb.appendLine("                val __falconOut = (__falconResult.data as? Bundle) ?: Bundle()")
 
         if (simpleReturnType == "Unit") {
             sb.appendLine("                Unit")
         } else {
-            val getExpr = if (returnTypeResolved != null) TypeCodec.get(returnTypeResolved, "out", "r") else null
+            val getExpr = if (returnTypeResolved != null) TypeCodec.get(returnTypeResolved, "__falconOut", "r") else null
             if (getExpr == null) {
                 logger.error(
                     "@IpcMethod return type $returnTypeDef unsupported in $interfaceName.$methodName; " +
@@ -292,7 +298,7 @@ object ProxyGenerator {
 
         sb.appendLine("            }")
         sb.appendLine("            is TransportResult.Error ->")
-        sb.appendLine("                throw RuntimeException(\"IPC error [\${result.code}]: \${result.message}\")")
+        sb.appendLine("                throw com.falcon.ipc.protocol.IpcException(__falconResult.code, \"IPC error [\${__falconResult.code}]: \${__falconResult.message}\")")
         sb.appendLine("        }")
         sb.appendLine("    }")
         sb.appendLine()
@@ -300,14 +306,11 @@ object ProxyGenerator {
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    /** Render a KSType as a Kotlin type name suitable for generated code. */
-    private fun renderTypeName(t: com.google.devtools.ksp.symbol.KSType): String {
-        val qn = t.declaration.qualifiedName?.asString()
-            ?: t.declaration.simpleName.asString()
-        return renderQualifiedName(qn)
-    }
+    /** Render a KSType as Kotlin source (generic-aware, nullability-aware). */
+    private fun renderTypeName(t: com.google.devtools.ksp.symbol.KSType): String =
+        TypeCodec.render(t)
 
-    /** Map a fully-qualified name to its simple/kotlin form. */
+    /** Map a fully-qualified name to its simple/kotlin form (used for IpcReply<T> arg). */
     private fun renderQualifiedName(qn: String): String = when (qn) {
         "kotlin.Int" -> "Int"
         "kotlin.Long" -> "Long"

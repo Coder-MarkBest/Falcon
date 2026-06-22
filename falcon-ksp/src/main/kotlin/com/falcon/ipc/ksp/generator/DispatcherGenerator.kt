@@ -43,6 +43,10 @@ object DispatcherGenerator {
             sb.appendLine("import kotlinx.coroutines.flow.Flow")
             sb.appendLine("import kotlinx.coroutines.flow.map")
         }
+        if (ipcMethods.any { it.modifiers.contains(com.google.devtools.ksp.symbol.Modifier.SUSPEND) }) {
+            sb.appendLine("import kotlinx.coroutines.Dispatchers")
+            sb.appendLine("import kotlinx.coroutines.withTimeout")
+        }
         sb.appendLine()
         sb.appendLine("class $name(private val impl: $ifaceName) : IpcDispatcher {")
 
@@ -75,7 +79,9 @@ object DispatcherGenerator {
             val ret = m.returnType!!.resolve()
             val isSuspend = m.modifiers.contains(Modifier.SUSPEND)
             val call = "impl.$mName(${argExprs.joinToString(", ")})"
-            val wrapped = if (isSuspend) "kotlinx.coroutines.runBlocking { $call }" else call
+            val wrapped = if (isSuspend)
+                "kotlinx.coroutines.runBlocking(Dispatchers.IO) { withTimeout(com.falcon.ipc.Falcon.getInstance().callTimeoutMs) { $call } }"
+            else call
 
             sb.appendLine("            $id -> {")
             sb.appendLine("                val r = $wrapped")
@@ -93,7 +99,7 @@ object DispatcherGenerator {
             sb.appendLine("            }")
         }
 
-        sb.appendLine("            else -> throw IllegalArgumentException(\"Unknown methodId: \$methodId in $ifaceName\")")
+        sb.appendLine("            else -> throw com.falcon.ipc.protocol.IpcException(com.falcon.ipc.protocol.ErrorCode.METHOD_NOT_FOUND, \"No method for id \$methodId in $ifaceName\")")
         sb.appendLine("        }")
         sb.appendLine("        return out")
         sb.appendLine("    }")
@@ -136,7 +142,7 @@ object DispatcherGenerator {
         // ── invokeCallback (IpcCallback) ───────────────────────────────────
         if (cbMethods.isNotEmpty()) {
             sb.appendLine()
-            sb.appendLine("    override fun invokeCallback(methodId: Int, args: Bundle, reply: (Bundle) -> Unit) {")
+            sb.appendLine("    override fun invokeCallback(methodId: Int, args: Bundle, reply: (com.falcon.ipc.protocol.IpcEnvelope) -> Unit) {")
             sb.appendLine("        when (methodId) {")
 
             for (m in cbMethods) {
@@ -180,7 +186,7 @@ object DispatcherGenerator {
                 val putReply: String
                 if (replyParam != null) {
                     val replyType = replyParam.type.resolve().arguments.first().type!!.resolve()
-                    replyTypeStr = replyType.declaration.qualifiedName?.asString() ?: "Any"
+                    replyTypeStr = TypeCodec.render(replyType)
                     putReply = TypeCodec.put(replyType, "it", "r", "data")
                         ?: run {
                             logger.error(
@@ -194,11 +200,14 @@ object DispatcherGenerator {
                     putReply = ""
                 }
 
-                // Build call args: regular args first, then IpcReply anonymous object
+                // Build call args: regular args first, then IpcReply anonymous object.
+                // Both onResult and onError reply through the same IpcEnvelope channel;
+                // onError sends an error envelope the proxy decodes via event.isError.
                 val callArgs = argNames.toMutableList()
                 if (replyParam != null) {
                     callArgs += "object : com.falcon.ipc.service.IpcReply<$replyTypeStr> {\n" +
-                        "                    override fun onResult(data: $replyTypeStr) { reply(android.os.Bundle().also { $putReply }) }\n" +
+                        "                    override fun onResult(data: $replyTypeStr) { reply(com.falcon.ipc.protocol.IpcEnvelope(argsBundle = android.os.Bundle().also { $putReply })) }\n" +
+                        "                    override fun onError(code: Int, message: String) { reply(com.falcon.ipc.protocol.IpcEnvelope.error(code, message)) }\n" +
                         "                }"
                 }
 

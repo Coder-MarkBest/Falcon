@@ -128,11 +128,12 @@ class MessageRouterTest {
         val present = router.handleLocal(
             IpcEnvelope(serviceKey = "", method = "__check_service__", argsBundle = Bundle().apply { putString("key", key) }),
             "proc", 1234) as Bundle
-        assertEquals(true, present.getBoolean("r"))
+        // 0 = accessible, 1 = not found, 2 = permission denied
+        assertEquals(0, present.getInt("r"))
         val absent = router.handleLocal(
             IpcEnvelope(serviceKey = "", method = "__check_service__", argsBundle = Bundle().apply { putString("key", "no.such.Svc") }),
             "proc", 1234) as Bundle
-        assertEquals(false, absent.getBoolean("r"))
+        assertEquals(1, absent.getInt("r"))
     }
 
     @Test
@@ -146,7 +147,40 @@ class MessageRouterTest {
         val result = router.handleLocal(
             IpcEnvelope(serviceKey = "", method = "__check_service__", argsBundle = Bundle().apply { putString("key", key) }),
             "intruder", 1234) as Bundle
-        assertEquals(false, result.getBoolean("r")) // denied probe returns false, does not throw and does not reveal existence
+        assertEquals(2, result.getInt("r")) // 2 = permission denied, 0 = accessible, 1 = not found
+    }
+
+    @Test
+    fun `check_service schema match returns accessible, mismatch returns 3`() {
+        val registry = ServiceRegistry()
+        registry.register(EchoService::class, EchoServiceImpl())
+        registry.registerSchema(EchoService::class.qualifiedName!!, 12345)
+        val router = MessageRouter(registry, MonitorFacade(), PermissionChecker(emptyMap()),
+            RateLimiter(clock = { 0L }))
+        val key = EchoService::class.qualifiedName!!
+
+        fun check(clientSchema: Int) = (router.handleLocal(
+            IpcEnvelope(serviceKey = "", method = "__check_service__",
+                argsBundle = Bundle().apply { putString("key", key); putInt("schema", clientSchema) }),
+            "proc", 1234) as Bundle).getInt("r")
+
+        assertEquals(0, check(12345))   // match → accessible
+        assertEquals(3, check(99999))   // mismatch → schema mismatch
+        assertEquals(0, check(0))       // client unknown → skip check (back-compat)
+    }
+
+    @Test
+    fun `check_service skips schema check when server schema unknown`() {
+        val registry = ServiceRegistry()
+        registry.register(EchoService::class, EchoServiceImpl())   // no registerSchema → server schema 0
+        val router = MessageRouter(registry, MonitorFacade(), PermissionChecker(emptyMap()),
+            RateLimiter(clock = { 0L }))
+        val key = EchoService::class.qualifiedName!!
+        val r = (router.handleLocal(
+            IpcEnvelope(serviceKey = "", method = "__check_service__",
+                argsBundle = Bundle().apply { putString("key", key); putInt("schema", 777) }),
+            "proc", 1234) as Bundle).getInt("r")
+        assertEquals(0, r)   // server schema 0 → no rejection
     }
 
     @Test

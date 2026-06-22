@@ -38,4 +38,56 @@ object BundleCodec {
     fun putEnum(b: Bundle, k: String, v: Enum<*>?) = b.putString(k, v?.name)
     fun <T : Enum<T>> getEnum(b: Bundle, k: String, cls: Class<T>): T? =
         b.getString(k)?.let { java.lang.Enum.valueOf(cls, it) }
+
+    // --- Collections ---
+    // Encoded as: size at "$k#n" (-1 = null), elements in a nested Bundle at "$k#v"
+    // under string-index keys. The element codec is supplied by generated code, so any
+    // supported element type (including nested List/Map) works via recursion.
+    //
+    // Invariant: the caller-supplied [k] must not contain '#' — these helpers derive
+    // sibling keys "$k#n"/"$k#v"/"$k#k" from it. KSP always passes numeric indices
+    // ("0".."n") or "r", which satisfy this.
+
+    fun <T> putList(b: Bundle, k: String, v: List<T>?, putElem: (Bundle, String, T) -> Unit) {
+        if (v == null) { b.putInt("$k#n", -1); return }
+        b.putInt("$k#n", v.size)
+        val inner = Bundle()
+        v.forEachIndexed { i, e -> putElem(inner, i.toString(), e) }
+        b.putBundle("$k#v", inner)
+    }
+
+    fun <T> getList(b: Bundle, k: String, getElem: (Bundle, String) -> T): List<T>? {
+        val n = b.getInt("$k#n", -1)
+        if (n < 0) return null
+        val inner = b.getBundle("$k#v") ?: return emptyList()
+        inner.classLoader = BundleCodec::class.java.classLoader
+        return (0 until n).map { getElem(inner, it.toString()) }
+    }
+
+    fun <K, V> putMap(
+        b: Bundle, k: String, v: Map<K, V>?,
+        putKey: (Bundle, String, K) -> Unit, putVal: (Bundle, String, V) -> Unit
+    ) {
+        if (v == null) { b.putInt("$k#n", -1); return }
+        b.putInt("$k#n", v.size)
+        val kb = Bundle(); val vb = Bundle()
+        var i = 0
+        for ((key, value) in v) { putKey(kb, i.toString(), key); putVal(vb, i.toString(), value); i++ }
+        b.putBundle("$k#k", kb); b.putBundle("$k#v", vb)
+    }
+
+    fun <K, V> getMap(
+        b: Bundle, k: String,
+        getKey: (Bundle, String) -> K, getVal: (Bundle, String) -> V
+    ): Map<K, V>? {
+        val n = b.getInt("$k#n", -1)
+        if (n < 0) return null
+        val kb = b.getBundle("$k#k") ?: return emptyMap()
+        val vb = b.getBundle("$k#v") ?: return emptyMap()
+        kb.classLoader = BundleCodec::class.java.classLoader
+        vb.classLoader = BundleCodec::class.java.classLoader
+        val out = LinkedHashMap<K, V>(n)
+        for (i in 0 until n) out[getKey(kb, i.toString())] = getVal(vb, i.toString())
+        return out
+    }
 }

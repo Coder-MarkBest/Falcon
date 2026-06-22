@@ -2,9 +2,12 @@ package com.falcon.ipc.runtime
 
 import com.falcon.ipc.core.IpcState
 import com.falcon.ipc.core.FalconManager
+import com.falcon.ipc.util.FalconLogger
+import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import java.util.concurrent.atomic.AtomicBoolean
 
 sealed class IpcEvent<out T> {
     data class Data<T>(val value: T) : IpcEvent<T>()
@@ -15,16 +18,16 @@ sealed class IpcEvent<out T> {
 /**
  * Throttle: emit at most one value per [periodMs] milliseconds.
  * Drops values that arrive during the throttle period.
+ * Uses [AtomicBoolean] to eliminate the narrow race between flag check and coroutine launch.
  */
 fun <T> Flow<T>.throttle(periodMs: Long): Flow<T> = channelFlow {
-    var throttling = false
+    val throttling = AtomicBoolean(false)
     collect { value ->
-        if (!throttling) {
+        if (throttling.compareAndSet(false, true)) {
             send(value)
-            throttling = true
             launch {
                 delay(periodMs)
-                throttling = false
+                throttling.set(false)
             }
         }
     }
@@ -32,14 +35,16 @@ fun <T> Flow<T>.throttle(periodMs: Long): Flow<T> = channelFlow {
 
 /**
  * Bind flow to IPC connection state.
- * When disconnected, emits IpcEvent.Disconnected.
- * When reconnected, emits IpcEvent.Reconnected then resumes data.
+ * When disconnected, emits [IpcEvent.Disconnected].
+ * When reconnected, emits [IpcEvent.Reconnected] then resumes data.
+ *
+ * The connection listener is automatically unregistered when the downstream
+ * collector cancels.
  */
-fun <T> Flow<T>.withConnectionState(falconManager: FalconManager): Flow<IpcEvent<T>> = channelFlow {
+fun <T> Flow<T>.withConnectionState(falconManager: FalconManager): Flow<IpcEvent<T>> = callbackFlow {
     val upstream = this@withConnectionState
 
-    // Listen for connection state changes
-    falconManager.onConnectionStateChanged { state, _ ->
+    val onStateChange: (IpcState, String) -> Unit = { state, _ ->
         when (state) {
             IpcState.DISCONNECTED -> trySend(IpcEvent.Disconnected)
             IpcState.CONNECTED -> trySend(IpcEvent.Reconnected)
@@ -47,9 +52,20 @@ fun <T> Flow<T>.withConnectionState(falconManager: FalconManager): Flow<IpcEvent
         }
     }
 
+    falconManager.onConnectionStateChanged(onStateChange)
+
     // Forward data events
-    upstream.collect { value ->
-        send(IpcEvent.Data(value))
+    try {
+        upstream.collect { value ->
+            send(IpcEvent.Data(value))
+        }
+    } catch (e: Exception) {
+        FalconLogger.w("FlowExt", "withConnectionState upstream error: ${e.message}")
+    }
+
+    // Unregister on cancel/close — prevents the unbounded listener leak
+    awaitClose {
+        falconManager.removeConnectionStateCallback(onStateChange)
     }
 }
 
@@ -67,6 +83,7 @@ fun <T> Flow<T>.retryOnReconnect(
             break // Normal completion
         } catch (e: Exception) {
             retries++
+            FalconLogger.w("FlowExt", "Flow error, retry $retries/$maxRetries: ${e.message}")
             if (retries >= maxRetries) throw e
             delay(1000L * retries.coerceAtMost(30))
         }
