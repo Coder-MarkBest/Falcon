@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+# Cancel superseded runs on the same ref to save CI minutes.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
+      # Pure-Kotlin + JVM-side coverage and the Robolectric round-trip suites.
+      # These run the REAL KSP-generated Proxy/Dispatcher code, so they catch
+      # codec/dispatch regressions without a device.
+      - name: Unit tests
+        run: |
+          ./gradlew \
+            :falcon-core:testDebugUnitTest \
+            :falcon-benchmark:testDebugUnitTest \
+            :falcon-cross-server:testDebugUnitTest \
+            --stacktrace
+
+      # Verify the consumable library artifacts assemble cleanly.
+      - name: Assemble libraries
+        run: |
+          ./gradlew \
+            :falcon-annotations:assemble \
+            :falcon-core:assembleRelease \
+            :falcon-ksp:assemble \
+            --stacktrace
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: '**/build/reports/tests/'
+          if-no-files-found: ignore

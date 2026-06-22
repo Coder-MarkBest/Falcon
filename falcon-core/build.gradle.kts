@@ -1,6 +1,7 @@
 plugins {
     id("com.android.library")
     id("org.jetbrains.kotlin.android")
+    `maven-publish`
 }
 
 android {
@@ -25,6 +26,22 @@ android {
 
     kotlinOptions {
         jvmTarget = "17"
+    }
+
+    // Expose a single `release` variant for publishing (consumed via JitPack).
+    publishing {
+        singleVariant("release") {
+            withSourcesJar()
+        }
+    }
+}
+
+publishing {
+    publications {
+        register<MavenPublication>("release") {
+            artifactId = "falcon-core"
+            afterEvaluate { from(components["release"]) }
+        }
     }
 }
 

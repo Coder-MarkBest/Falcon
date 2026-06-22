@@ -1,330 +1,260 @@
-# Falcon IPC Framework
+<div align="center">
 
-Android 车载系统跨进程通信 (IPC) 框架，基于 **Binder + KSP 编译期代码生成**，零反射，类型安全。
+# 🦅 Falcon IPC
 
-> 📘 **集成与使用**：见 [docs/USAGE.md](docs/USAGE.md)。可运行示例见 `falcon-cross-server` + `falcon-cross-client` 模块（两个独立签名 APK，模拟多供应商车载系统跨 App 通信）。
+**Type-safe, zero-reflection cross-process IPC for Android — powered by Binder + KSP compile-time codegen.**
 
-## 设计目标
+[![CI](https://github.com/Coder-MarkBest/Falcon/actions/workflows/ci.yml/badge.svg)](https://github.com/Coder-MarkBest/Falcon/actions/workflows/ci.yml)
+[![JitPack](https://jitpack.io/v/Coder-MarkBest/Falcon.svg)](https://jitpack.io/#Coder-MarkBest/Falcon)
+[![API](https://img.shields.io/badge/API-24%2B-brightgreen.svg)](https://developer.android.com/about/versions)
+[![Kotlin](https://img.shields.io/badge/Kotlin-1.9.22-7F52FF.svg?logo=kotlin)](https://kotlinlang.org)
+[![License](https://img.shields.io/github/license/Coder-MarkBest/Falcon.svg)](LICENSE)
 
-- **编译期安全** — KSP 生成 Proxy/Dispatcher，方法签名变更在编译时发现
-- **零反射** — 不用 `Parcel.marshall()`，不用动态代理，全部是类型化 `Bundle` + 稳定的 `methodId`
-- **精简** — 只保留 Binder 传输路径，不引入未使用的抽象层
-- **生产就绪** — 签名校验、权限控制、限流、超时、重连、诊断
+**English** · [简体中文](README.zh-CN.md)
 
-## 架构
+</div>
 
-```
-falcon-annotations         纯 Kotlin 注解定义 (无 Android 依赖)
-       ↑
-falcon-core                Android Library — 运行时框架
-       ↑
-falcon-ksp                 KSP 处理器 — 编译期生成 Stub/Proxy
-       ↑
-falcon-benchmark           Android App — 对比 Falcon vs AIDL/Messenger/ContentProvider/Broadcast
-```
+---
 
-### 数据流
+Falcon turns a plain Kotlin interface into a fully-typed cross-process API. You write the
+interface and the implementation; KSP generates the marshalling Proxy and Dispatcher at
+compile time. No `Parcel.marshall()`, no dynamic proxies, no reflection on the hot path —
+just typed `Bundle`s over Binder with a stable, hash-based method id.
 
-```
-App 进程                                      Remote 进程
-━━━━━━━━━                                    ━━━━━━━━━
-Proxy (KSP 生成)                              Dispatcher (KSP 生成)
-  │  pack args → typed Bundle                   │  unpack typed Bundle
-  │  send with stable methodId                  │  dispatch by methodId (when switch)
-  ▼                                             ▼
-BinderTransport ──Binder──▶ IpcHostService ──▶ MessageRouter
-                             │                    │ signature check
-                             │                    │ permission check
-                             │                    │ rate limit
-                             │                    │ interceptor chain
-                             ▼                    ▼
-                           IIpcHost.Stub()      Service impl
-```
-
-## 快速开始
-
-### 1. 定义服务接口
+Built for Android automotive / multi-app systems where independently-signed APKs from
+different vendors must talk to each other safely.
 
 ```kotlin
-import com.falcon.ipc.annotations.IpcMethod
-import com.falcon.ipc.annotations.IpcEvent
-import com.falcon.ipc.annotations.IpcCallback
-import com.falcon.ipc.service.IpcService
-import com.falcon.ipc.service.IpcReply
-import kotlinx.coroutines.flow.Flow
-
 interface INavService : IpcService {
-    @IpcMethod
-    suspend fun getCurrentLocation(): Location
-
-    @IpcMethod
-    fun computeRoute(from: LatLng, to: LatLng): Route
-
-    @IpcEvent
-    fun locationUpdates(): Flow<Location>
-
-    @IpcCallback
-    fun fetch(id: Int, reply: IpcReply<String>)
+    @IpcMethod  suspend fun route(from: LatLng, to: LatLng): Route   // request / response
+    @IpcEvent   fun locationUpdates(): Flow<Location>                // pub / sub
+    @IpcStream  fun tiles(): Flow<ByteArray>                         // chunked stream
+    @IpcCallback fun search(q: String, reply: IpcReply<List<Poi>>)   // async callback
 }
+
+// caller — just call the interface; the Binder hop is invisible
+val nav = Falcon.getInstance().getServiceSuspending<INavService>()
+val route = nav?.route(here, there)
 ```
 
-### 2. 实现服务
+## Why Falcon
+
+| | Raw AIDL | Messenger | Falcon |
+|---|:---:|:---:|:---:|
+| Define service in pure Kotlin | ❌ `.aidl` files | ❌ manual `Handler` | ✅ annotated interface |
+| Request / response | ✅ | ⚠️ manual | ✅ `suspend fun` |
+| Pub/sub events & streams | ❌ DIY | ❌ DIY | ✅ `Flow<T>` |
+| Async callbacks | ⚠️ manual | ❌ | ✅ `IpcReply<T>` |
+| Coroutines-native | ❌ | ❌ | ✅ |
+| Reflection on call path | — | — | ✅ **none** |
+| Signature allow-list + per-call auth | DIY | DIY | ✅ built-in |
+| Rate limiting / permissions / interceptors | DIY | DIY | ✅ built-in |
+| Cross-app discovery & auto-reconnect | DIY | DIY | ✅ built-in |
+| Schema-compatibility check between APKs | ❌ | ❌ | ✅ compile-hash |
+
+## Highlights
+
+- **Compile-time safety** — change a method signature and the build breaks, not production. The wire `methodId` is an FNV-1a hash of the signature, so proxy and dispatcher can never disagree.
+- **Zero reflection** — KSP generates a `when(methodId)` dispatcher and a typed `Bundle` packer. Nothing is resolved by name at runtime.
+- **Every IPC shape** — request/response, pub/sub events, chunked streams, and async callbacks, all coroutine/`Flow`-native.
+- **Secure by default** — mandatory signature verification (trusted-cert allow-list, fail-closed), per-process permission rules, and a per-PID sliding-window rate limiter.
+- **Resilient** — `ContentObserver`-driven discovery, `linkToDeath` recovery, exponential-backoff reconnection, and a foreground-service keep-alive so a headless server survives Android 14's cached-app freezer.
+- **Multi-vendor ready** — two independently-signed APKs with mutual certificate trust and a wire-schema hash that refuses to bind mismatched builds.
+
+## Install
+
+Falcon is distributed via [JitPack](https://jitpack.io/#Coder-MarkBest/Falcon).
+
+**1. Add the JitPack repository** (`settings.gradle.kts`):
 
 ```kotlin
-class NavServiceImpl : INavService {
-    override suspend fun getCurrentLocation(): Location = gps.lastKnown()
-
-    override fun computeRoute(from: LatLng, to: LatLng): Route = router.calculate(from, to)
-
-    override fun locationUpdates(): Flow<Location> = gps.updates
-
-    override fun fetch(id: Int, reply: IpcReply<String>) {
-        reply.onResult("result-$id")
+dependencyResolutionManagement {
+    repositories {
+        google()
+        mavenCentral()
+        maven("https://jitpack.io")
     }
 }
 ```
 
-### 3. 初始化（Remote 进程）
+**2. Apply KSP and add the dependencies** (`build.gradle.kts` of the consuming module):
 
 ```kotlin
-// Application.onCreate() in the remote process
+plugins {
+    id("com.google.devtools.ksp") version "1.9.22-1.0.17" // match your Kotlin version
+}
+
+dependencies {
+    implementation("com.github.Coder-MarkBest.Falcon:falcon-core:1.0.0")
+    ksp("com.github.Coder-MarkBest.Falcon:falcon-ksp:1.0.0")
+    // falcon-annotations comes transitively via falcon-core
+}
+```
+
+> The KSP plugin version must track your project's Kotlin version (`<kotlin>-<ksp>`).
+
+## Quickstart
+
+A complete request/response service in four steps. (Full integration — manifest entries,
+cross-app signing, events/streams/callbacks — is in **[docs/USAGE.md](docs/USAGE.md)**.)
+
+**1 · Define the contract** — a shared module both processes compile:
+
+```kotlin
+interface IGreeter : IpcService {
+    @IpcMethod suspend fun greet(name: String): String
+}
+```
+
+**2 · Implement it** (server side):
+
+```kotlin
+class GreeterImpl : IGreeter {
+    override suspend fun greet(name: String) = "Hello, $name!"
+}
+```
+
+**3 · Initialize Falcon once per process** (`Application.onCreate`):
+
+```kotlin
 Falcon.init(this) {
-    generated(MyModuleFalconGeneratedRegistry)  // KSP 生成的注册表
-    security {
-        trustedSignatures = setOf("sha256:abc...")  // 可选：信任的调用者
-    }
-}.register(INavService::class, NavServiceImpl())
+    generated(AppFalconGeneratedRegistry)   // KSP-generated, named after your interface package
+}.register(IGreeter::class, GreeterImpl())  // server only
 ```
 
-### 4. 调用服务（Client 进程）
+**4 · Call it from the other process / app**:
 
 ```kotlin
-// Main process — 自动发现并连接 remote 服务
-val nav: INavService? = Falcon.getInstance().getService(INavService::class)
-
-// Type-safe call with error handling
-when (val result = falcon.callSafe<INavService, Location> { it.getCurrentLocation() }) {
-    is IpcResult.Success    -> updateMap(result.data)
-    is IpcResult.Failure    -> showError(result.message)
-    is IpcResult.Timeout    -> showError("Timed out")
-    is IpcResult.ServiceUnavailable -> retryLater()
+lifecycleScope.launch {
+    val greeter = Falcon.getInstance().getServiceSuspending<IGreeter>()
+    println(greeter?.greet("Falcon"))   // → "Hello, Falcon!"
 }
-
-// Event subscription (Flow)
-nav?.locationUpdates()?.collect { location -> updateMap(location) }
 ```
 
-## 注解说明
+Register the provider (and, for servers, the host service) in your manifest — see
+[docs/USAGE.md](docs/USAGE.md) for the exact entries.
 
-| 注解 | 方法签名 | 用途 |
-|------|---------|------|
-| `@IpcMethod` | `suspend fun m(): T` | 请求-响应 |
-| `@IpcEvent` | `fun m(): Flow<T>` | 发布-订阅事件 |
-| `@IpcStream` | `fun m(): Flow<ByteArray>` | 大数据流 |
-| `@IpcCallback` | `fun m(args, IpcReply<T>)` | 异步回调 |
+## IPC patterns
 
-> 访问控制通过 `Falcon.init { security { accessRules = ... } }` 的 DSL 配置（按调用方进程/包名），见[安全模型](#安全模型)。
+| Annotation | Shape | Signature |
+|---|---|---|
+| `@IpcMethod` | Request / response | `suspend fun m(args): T` |
+| `@IpcEvent` | Pub / sub | `fun m(): Flow<T>` |
+| `@IpcStream` | Chunked stream | `fun m(): Flow<ByteArray>` |
+| `@IpcCallback` | Async callback | `fun m(args, reply: IpcReply<T>)` |
 
-## 配置
+**Wire types:** primitives, `String`, `ByteArray`, `Parcelable`, enums, and `List`/`Map` of
+those. `data class` payloads must implement `Parcelable` (hand-written, or via the
+`kotlin-parcelize` `@Parcelize` plugin). Unsupported types fail at **KSP compile time**, not at
+runtime.
+
+## Architecture
+
+```
+ Caller process                                   Server process
+ ───────────────                                  ───────────────
+ Xxx_Proxy (generated)                            Xxx_Dispatcher (generated)
+   pack args → typed Bundle                         when(methodId) → impl call
+   send with stable methodId                        no reflection
+        │                                                 ▲
+        ▼                                                 │
+ BinderTransport ──Binder──▶ IpcHostService ──▶ MessageRouter
+                                                  signature → permission → rate-limit → interceptors
+                              IpcRegistryProvider (ContentProvider) ── direct-binder discovery
+```
+
+Five-module dependency chain:
+
+```
+falcon-annotations   pure-Kotlin annotations (no Android)
+      ↑
+falcon-core          runtime: transport, security, discovery, monitor
+      ↑
+falcon-ksp           KSP processor → Proxy / Dispatcher / Registry
+      ↑
+falcon-benchmark · falcon-cross-server · falcon-cross-client   apps & demos
+```
+
+## Security model
+
+- **Signature verification** *(fail-closed)* — a caller is admitted only if every package in its
+  UID is signed by a certificate in `trustedSignatures` (SHA-256) ∪ the app's own signature.
+  Unset ⇒ same-signature callers only. Enforced on every bind and every call via
+  `Binder.getCallingUid()`.
+- **Permission control** — DSL access rules keyed by caller **process name** (package as fallback).
+- **Rate limiting** — per-PID sliding window, enforced in the router on every call.
 
 ```kotlin
-Falcon.init(context) {
-    // 传输层配置
-    transport {
-        binderPoolSize = 4
-        maxBinderPayloadSize = 256 * 1024  // 256KB
-    }
-
-    // 重连配置
-    reconnect {
-        enabled = true
-        initialDelayMs = 500
-        maxDelayMs = 30_000
-        maxRetries = -1  // -1 = 无限
-    }
-
-    // 超时配置
-    timeout {
-        connectMs = 3_000
-        callMs = 5_000
-    }
-
-    // 安全配置
+Falcon.init(this) {
+    generated(AppFalconGeneratedRegistry)
+    peerPackages("com.vendor.other")          // cross-app peers to discover
     security {
         signatureVerification = true
-        trustedSignatures = setOf("sha256:abc123...")
-
-        // 权限规则 — 支持进程级粒度
-        accessRules = mapOf(
-            "com.example.INavService" to AccessRule(
-                allowList = setOf("com.example:cluster", "com.example:hud"),
-                denyList = setOf("com.example:media")
-            )
-        )
-
-        // 限流 — 设为 0 表示不限制
-        rateLimitPerSecond = 0
-        maxConcurrentCalls = 0
+        trustedSignatures = setOf("69d0…31e4") // peer cert SHA-256 (lowercase, no colons)
+        rateLimitPerSecond = 200
+        maxConcurrentCalls = 32
     }
-
-    // 监控
-    monitorLevel = MonitorLevel.BASIC
-
-    // 自定义拦截器
-    addInterceptor(LoggingInterceptor())
-
-    // KSP 生成的注册表
-    generated(MyModuleFalconGeneratedRegistry)
+    transport { binderPoolSize = 4; maxBinderPayloadSize = 256 * 1024 }
+    timeout   { connectMs = 3_000; callMs = 5_000 }
 }
 ```
 
-## 安全模型
+## Performance
 
-### 签名校验 (SignatureGuard)
+Steady-state cross-**app** round-trip (two independently-signed APKs, real Binder boundary +
+per-call signature check), measured on an Android 14 emulator with the built-in benchmark
+(cross-client button 17). Numbers are device-dependent and only comparable within one run:
 
-- **onBind + 每调用双重校验**：`onBind` 时做早期拒绝，`invoke()` 内做权威校验
-- **信任白名单**：配置 `trustedSignatures`（SHA-256 证书哈希），只有签名匹配的调用者才能访问
-- **Fail-closed**：未配置时仅允许同签名调用（同 APK 内进程间通信）
-- **缓存自动失效**：监听 `ACTION_PACKAGE_REPLACED/REMOVED` 广播，应用更新后自动清除签名缓存
+| Call | avg | p50 | p99 |
+|---|---:|---:|---:|
+| `ping(String)` | 0.80 ms | 0.28 ms | 5.4 ms |
+| `add(Int, Int)` | 1.99 ms | 1.57 ms | 7.3 ms |
+| `echoBytes(4 KB)` | 1.91 ms | 1.51 ms | 7.6 ms |
+| `getVehicleData()` *(Parcelable)* | 2.09 ms | 1.44 ms | 5.9 ms |
 
-### 权限控制 (PermissionChecker)
+**Concurrency** — the built-in stress test (button 18) issues 8 workers × 500 = **4 000
+concurrent cross-app calls**, every response validated: **0 errors, ~4 800 calls/s**.
 
-- **进程级粒度**：支持区分同 UID 下的不同进程（如 `:cluster` vs `:hud`）
-- **AllowList / DenyList**：DenyList 优先于 AllowList
-- **默认放行**：未配置规则的 service 默认允许所有调用者
+The `falcon-benchmark` module additionally compares Falcon against raw AIDL, Messenger,
+ContentProvider, and Broadcast in one run (intra-app). Run any benchmark on a device/emulator —
+the build does not produce numbers.
 
-### 限流 (RateLimiter)
+## Demos & docs
 
-- **滑动窗口**：每秒调用次数限制（设为 0 则禁用）
-- **并发限制**：同一 PID 同时进行的调用数上限
-- **自动清理**：每 60s 清理闲置 PID 的条目
+- **Cross-app demo** — `falcon-cross-server` + `falcon-cross-client`: two independently-signed
+  APKs with mutual certificate trust, exercising all 16 IPC patterns, a latency benchmark, and
+  a concurrent stress test. Simulates a multi-vendor automotive system.
+- **Integration guide** — [docs/USAGE.md](docs/USAGE.md).
+- **Design spec** — [docs/superpowers/specs](docs/superpowers/specs).
 
-## 监控与诊断
-
-```kotlin
-// 启用诊断（包含延迟、成功率、调用追踪）
-Falcon.getInstance().diagnostics.enable(dumpDirectory = cacheDir)
-
-// 获取统计
-val stats = Falcon.getInstance().monitor.getStats()
-stats.forEach { s ->
-    println("${s.serviceName}#${s.methodName}: " +
-            "${s.callCount} calls, ${s.avgLatencyMs.roundToInt()}ms avg")
-}
-
-// 实时统计 Flow
-Falcon.getInstance().monitor.statsFlow().collect { updateDashboard(it) }
-```
-
-## 模块结构
-
-```
-falcon-core/src/main/java/com/falcon/ipc/
-├── Falcon.kt                  # 入口：init / getInstance
-├── FalconConfig.kt            # DSL 配置
-├── core/
-│   ├── FalconManager.kt       # 中央管理器
-│   ├── IpcHostService.kt      # Binder Service 宿主
-│   ├── PeerManager.kt         # 服务发现 + 重连
-│   ├── MessageRouter.kt       # 分发 + 拦截器链
-│   ├── ServiceRegistry.kt     # 服务注册表
-│   ├── EventCollector.kt      # Flow 订阅引用计数
-│   ├── EventProxy.kt          # 事件代理 (跨进程 Flow)
-│   ├── IpcRegistryProvider.kt # ContentProvider 注册中心
-│   ├── DiagnosticsManager.kt  # 异步诊断记录
-│   ├── IpcThreadPool.kt       # IPC 线程池
-│   └── TimeoutController.kt   # 超时控制
-├── transport/
-│   ├── IpcTransport.kt        # 传输接口
-│   └── BinderTransport.kt     # Binder 实现
-├── protocol/
-│   ├── IpcEnvelope.kt         # 消息信封 (Parcelable)
-│   ├── IpcResult.kt           # 调用结果
-│   ├── IpcException.kt        # 结构化错误
-│   ├── ErrorCode.kt           # 错误码
-│   └── BundleCodec.kt         # 类型化 Bundle 编解码
-├── security/
-│   ├── SignatureGuard.kt      # 签名校验
-│   ├── PermissionChecker.kt   # 权限检查
-│   └── RateLimiter.kt         # 限流
-├── monitor/
-│   ├── MonitorFacade.kt       # 监控门面
-│   └── IpcInterceptor.kt      # 拦截器接口
-├── runtime/
-│   ├── IpcDispatcher.kt       # 分发器接口 (KSP 生成)
-│   ├── CallSafe.kt            # 安全调用包装
-│   └── FlowExtensions.kt      # Flow 扩展
-└── util/
-    ├── FalconLogger.kt        # 日志
-    ├── CallerResolver.kt      # UID/PID → 身份解析
-    └── ProcessUtils.kt        # 进程工具
-```
-
-## 编译
+## Build & test
 
 ```bash
-# 构建全部模块
-./gradlew build
-
-# 仅构建 falcon-core
-./gradlew :falcon-core:assembleRelease
-
-# 运行测试
-./gradlew :falcon-core:test
-
-# 运行单个测试
-./gradlew :falcon-core:test --tests "com.falcon.ipc.security.RateLimiterTest"
-
-# 构建 benchmark APK
-./gradlew :falcon-benchmark:assembleDebug
+./gradlew build                              # everything
+./gradlew :falcon-core:testDebugUnitTest     # core unit tests
+./gradlew :falcon-cross-server:testDebugUnitTest   # JVM round-trip over generated code
+./gradlew :falcon-cross-server:assembleDebug :falcon-cross-client:assembleDebug
 ```
 
-### 环境要求
+The cross-app demo keystores are committed (demo-only, password `falcondemo`) so the demo
+builds and runs out of the box; their certificate fingerprints already match the trusted-signature
+allow-lists in the demo apps.
 
-- JDK 17 (需要 jmods — Android Studio 内置 JBR 不兼容，使用标准 JDK)
-- Android SDK 34+
-- Gradle 8.10
+## Roadmap
 
-## Benchmark
+- [x] Zero-reflection KSP dispatch (request/response, events, streams, callbacks)
+- [x] Cross-app discovery, mutual signature trust, schema-compat check
+- [x] Foreground-service keep-alive for headless servers (Android 14 freezer-safe)
+- [x] CI + JitPack distribution
+- [ ] Publish to Maven Central
+- [ ] Optional large-payload (SharedMemory) transport behind a flag
 
-`falcon-benchmark` 在同一个 APK 内对比 5 种跨进程通信机制的延迟：
+## Contributing
 
-| 机制 | 实现 | 说明 |
-|------|------|------|
-| Raw AIDL | `IBenchmarkService.Stub` | Binder 原生接口 |
-| Messenger | `Handler` + `Message.replyTo` | 基于 Handler 的消息传递 |
-| ContentProvider | `insert` → `query` 往返 | 基于 Binder + SQLite |
-| **Falcon** | KSP Proxy → `BinderTransport` | 本框架稳态调用路径 |
-| Broadcast | AMS 实际往返 | 非请求/响应模式，仅供参考 |
-
-在设备上运行 APK 后，结果以表格形式显示 avg/p50/p99 延迟（毫秒），按 payload 大小分组（Small/Medium/Large）。
-
-> **注意**：benchmark 结果仅在同一设备同一次运行内可比较。不同设备的 Binder 性能差异显著。
-
-## 类型支持
-
-| Kotlin 类型 | Bundle 编码 | 备注 |
-|------------|------------|------|
-| `Int`, `Long`, `Float`, `Double`, `Boolean` | `putInt` / `putLong` ... | 原生支持 |
-| `String` | `putString` | 原生支持 |
-| `ByteArray` | `putByteArray` | 最大 ~256KB (Binder 事务限制) |
-| `Parcelable` | `putParcelable` | 自定义数据类需实现 `Parcelable` |
-| `enum` | `putString(name)` | 通过枚举名传输 |
-| `Unit` (返回类型) | 空 Bundle | 无返回值 |
-| `Flow<T>` | 事件订阅/取消 | `@IpcEvent` / `@IpcStream` |
-| `IpcReply<T>` | 回调 Binder | `@IpcCallback` |
-
-**不支持**：`List<T>`（除非整体实现 Parcelable）、`Map<K,V>`、`Set<T>` 等。KSP 会在编译时报错。
-
-## methodId 稳定性
-
-每个 `@IpcMethod` / `@IpcEvent` / `@IpcCallback` 方法根据 **方法名 + 参数类型全限定名** 计算 FNV-1a 哈希作为 `methodId`。`IpcReply` 参数不计入哈希（因为 Proxy 和 Dispatcher 看到的签名不同）。
-
-- ✅ 重载同名方法：不同参数类型 → 不同 `methodId`
-- ✅ 调换参数顺序：不同 `methodId`
-- ⚠️ 重命名方法：breaking change（服务端和客户端需同时更新）
-- ⚠️ 改变参数类型：breaking change（`methodId` 会变）
+Issues and PRs welcome. Please run `./gradlew build` and the unit-test suites before opening a PR;
+new wire behavior should come with a round-trip test in `falcon-cross-server` (see
+`CrossServiceRoundTripTest`).
 
 ## License
 
-Internal — Falcon IPC Framework
+[MIT](LICENSE) © Falcon IPC contributors
