@@ -1,0 +1,159 @@
+# Falcon Technical Sharing Deck Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Produce a polished, editable 26-slide Chinese PowerPoint explaining Android IPC mechanisms, performance costs, and Falcon's implementation.
+
+**Architecture:** A single PptxGenJS generator builds the deck from reusable slide primitives and repo-grounded content. The output is rendered through LibreOffice/Poppler, checked through text extraction and visual contact sheets, corrected, then rendered again for final verification.
+
+**Tech Stack:** Node.js, PptxGenJS, SVG/PowerPoint native shapes, LibreOffice, Poppler, MarkItDown.
+
+## Global Constraints
+
+- Output is a 16:9 editable `.pptx` with exactly 26 slides.
+- Language is Chinese; audience is a mixed group of Android engineers and technical leaders.
+- Falcon must be described as a Binder-based engineering framework, not a replacement transport.
+- Do not invent device benchmark numbers or precise performance multiples.
+- Current Falcon paths use generated Proxy/Dispatcher/Registry, typed Bundle payloads, and stable method IDs without reflective dispatch.
+- Removed SharedMemory hybrid transport, CircuitBreaker, OTA negotiation, and legacy reflective/`Parcel.marshall()` paths must not appear as current features.
+- Every slide must contain an information-bearing visual element and speaker notes.
+- Complete at least one render, issue-fix, and re-render verification cycle.
+
+---
+
+### Task 1: Ground the technical content
+
+**Files:**
+- Read: `AGENTS.md`
+- Read: `docs/USAGE.md`
+- Read: `docs/superpowers/specs/2026-06-17-p2-binder-native-convergence.md`
+- Read: `docs/superpowers/specs/2026-06-18-p2b-events-callbacks.md`
+- Read: `docs/superpowers/specs/2026-06-19-benchmark-multimethod.md`
+- Read: `docs/superpowers/specs/2026-06-17-overengineering-audit.md`
+- Read: `falcon-core/src/main/java/com/falcon/ipc/**`
+- Read: `falcon-ksp/src/main/kotlin/com/falcon/ipc/ksp/**`
+
+**Interfaces:**
+- Consumes: approved deck design in `docs/superpowers/specs/2026-07-15-falcon-technical-sharing-deck-design.md`.
+- Produces: verified facts and exact short code excerpts for the generator.
+
+- [ ] **Step 1: Extract current implementation evidence**
+
+Run:
+
+```bash
+rg -n "generated\(|methodId|eventFlow|invokeCallback|typedRemoteFlow|trustedSignatures|linkToDeath|backoff|MonitorLevel" AGENTS.md docs/USAGE.md falcon-core falcon-ksp falcon-benchmark
+```
+
+Expected: matches for generated registry injection, generated dispatch, event/callback support, security, reconnection, and monitoring.
+
+- [ ] **Step 2: Confirm historical removals and benchmark caveats**
+
+Run:
+
+```bash
+rg -n "SharedMemory|CircuitBreaker|Parcel.marshall|steady-state|device|Broadcast" docs/superpowers/specs/2026-06-17-overengineering-audit.md docs/superpowers/specs/2026-06-19-benchmark-multimethod.md AGENTS.md
+```
+
+Expected: evidence that removed paths are excluded and device-dependent benchmark caveats are explicit.
+
+### Task 2: Build the editable deck
+
+**Files:**
+- Create: `docs/presentations/falcon-android-ipc-sharing.js`
+- Create: `docs/presentations/falcon-android-ipc-sharing.pptx`
+
+**Interfaces:**
+- Consumes: repo-grounded facts from Task 1 and the approved 26-slide outline.
+- Produces: `buildDeck(): Promise<void>` that writes the final PPTX.
+
+- [ ] **Step 1: Implement reusable slide primitives**
+
+Create helpers with these stable signatures:
+
+```javascript
+function addHeader(slide, section, title, index) {}
+function addFooter(slide, index) {}
+function addProcessBoundary(slide, x, y, w, h, label, accent) {}
+function addCard(slide, x, y, w, h, title, body, accent) {}
+function addFlow(slide, nodes, options = {}) {}
+function addSpeakerNotes(slide, minutes, script, caveat = "") {}
+```
+
+All helpers use fresh option objects and keep slide margins at or above 0.5 inches.
+
+- [ ] **Step 2: Implement the 26 approved slides**
+
+Create one function per slide:
+
+```javascript
+function slide01Title(pres) {}
+function slide02Scenario(pres) {}
+// ... through slide26Summary(pres)
+```
+
+Each function adds a distinct information-bearing diagram, matrix, call chain, or comparison visual and calls `addSpeakerNotes`.
+
+- [ ] **Step 3: Generate the PPTX**
+
+Run:
+
+```bash
+node docs/presentations/falcon-android-ipc-sharing.js
+```
+
+Expected: `docs/presentations/falcon-android-ipc-sharing.pptx` exists and the generator reports 26 slides.
+
+### Task 3: Validate content and visuals
+
+**Files:**
+- Create: `docs/presentations/rendered/`
+- Create: `docs/presentations/falcon-android-ipc-sharing.pdf`
+- Create: `docs/presentations/falcon-android-ipc-sharing-contact-sheet.png`
+- Modify: `docs/presentations/falcon-android-ipc-sharing.js` for corrections.
+
+**Interfaces:**
+- Consumes: PPTX generated by Task 2.
+- Produces: validated PPTX and visual preview artifacts.
+
+- [ ] **Step 1: Run content QA**
+
+Run:
+
+```bash
+python -m markitdown docs/presentations/falcon-android-ipc-sharing.pptx
+```
+
+Expected: 26 ordered slide headings, no missing key sections, and no placeholder content.
+
+- [ ] **Step 2: Render all slides**
+
+Run:
+
+```bash
+python .agents/skills/pptx/scripts/office/soffice.py --headless --convert-to pdf --outdir docs/presentations docs/presentations/falcon-android-ipc-sharing.pptx
+pdftoppm -png -r 144 docs/presentations/falcon-android-ipc-sharing.pdf docs/presentations/rendered/slide
+```
+
+Expected: one PDF and 26 PNG slide renders.
+
+- [ ] **Step 3: Inspect and record visual issues**
+
+Inspect every rendered slide for overflow, collisions, cramped spacing, low contrast, uneven alignment, and unclear diagrams. Record at least one concrete first-pass issue before editing.
+
+- [ ] **Step 4: Fix the generator and regenerate**
+
+Edit only `docs/presentations/falcon-android-ipc-sharing.js`, rerun generation, and repeat the render commands.
+
+Expected: every recorded issue is removed without introducing new overflow or alignment regressions.
+
+- [ ] **Step 5: Run final verification**
+
+Run:
+
+```bash
+python -m markitdown docs/presentations/falcon-android-ipc-sharing.pptx
+rg -n "TBD|TODO|lorem|ipsum|xxxx" docs/presentations
+```
+
+Expected: content extraction succeeds, placeholder search returns no matches from the deliverable source/output, and the final deck remains exactly 26 slides.
