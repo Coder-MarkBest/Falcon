@@ -2,7 +2,7 @@
 
 # 🦅 Falcon IPC
 
-**Type-safe, zero-reflection cross-process IPC for Android — powered by Binder + KSP compile-time codegen.**
+**Production-oriented Android IPC with typed KSP APIs and decoupled Dynamic RPC over Binder.**
 
 [![CI](https://github.com/Coder-MarkBest/Falcon/actions/workflows/ci.yml/badge.svg)](https://github.com/Coder-MarkBest/Falcon/actions/workflows/ci.yml)
 [![JitPack](https://jitpack.io/v/Coder-MarkBest/Falcon.svg)](https://jitpack.io/#Coder-MarkBest/Falcon)
@@ -23,6 +23,10 @@ just typed `Bundle`s over Binder with a stable, hash-based method id.
 
 Built for Android automotive / multi-app systems where independently-signed APKs from
 different vendors must talk to each other safely.
+
+When sharing a Kotlin contract module is undesirable, Dynamic RPC exposes versioned routes and
+topics using platform-only payload types. Client and server then share a protocol document, not
+interface or model source code.
 
 ```kotlin
 interface INavService : IpcService {
@@ -92,13 +96,15 @@ dependencies {
 ```
 
 > The KSP plugin version must track your project's Kotlin version (`<kotlin>-<ksp>`).
+> A Dynamic-RPC-only client needs only `falcon-core`; omit the KSP plugin and `falcon-ksp` dependency.
 
 ## Quickstart
 
 A complete request/response service in four steps. (Full integration — manifest entries,
 cross-app signing, events/streams/callbacks — is in **[docs/USAGE.md](docs/USAGE.md)**.)
 
-**1 · Define the contract** — a shared module both processes compile:
+**1 · Define the typed contract** — a shared module both processes compile (skip this and use
+Dynamic RPC when the projects must remain source-independent):
 
 ```kotlin
 interface IGreeter : IpcService {
@@ -146,6 +152,8 @@ Before a vehicle release, apply the [production readiness checklist](docs/PRODUC
 | `@IpcEvent` | Pub / sub | `fun m(): Flow<T>` |
 | `@IpcStream` | Chunked stream | `fun m(): Flow<ByteArray>` |
 | `@IpcCallback` | Async callback | `fun m(args, reply: IpcReply<T>)` |
+| Dynamic route | Decoupled request / response | `falcon.call("route", body = payload)` |
+| Dynamic topic | Decoupled pub / sub | `falcon.subscribe("topic")` |
 
 **Wire types:** primitives, `String`, `ByteArray`, `Parcelable`, enums, and `List`/`Map` of
 those. `data class` payloads must implement `Parcelable` (hand-written, or via the
@@ -167,7 +175,7 @@ runtime.
                               IpcRegistryProvider (ContentProvider) ── direct-binder discovery
 ```
 
-Five-module dependency chain:
+Seven-module project layout:
 
 ```
 falcon-annotations   pure-Kotlin annotations (no Android)
@@ -177,6 +185,7 @@ falcon-core          runtime: transport, security, discovery, monitor
 falcon-ksp           KSP processor → Proxy / Dispatcher / Registry
       ↑
 falcon-benchmark · falcon-cross-server · falcon-cross-client   apps & demos
+falcon-gradle-plugin auto-generates Android 11+ peer package visibility entries
 ```
 
 ## Security model
@@ -250,8 +259,9 @@ allow-lists in the demo apps.
 - [x] Cross-app discovery, mutual signature trust, schema-compat check
 - [x] Foreground-service keep-alive for headless servers (Android 14 freezer-safe)
 - [x] CI + JitPack distribution
+- [x] Version-negotiated Dynamic RPC without a shared interface/model module
+- [x] Release/R8/Lint quality gate and two-APK instrumentation CI
 - [ ] Publish to Maven Central
-- [ ] Optional large-payload (SharedMemory) transport behind a flag
 
 ## Contributing
 

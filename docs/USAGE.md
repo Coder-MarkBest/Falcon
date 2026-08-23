@@ -15,7 +15,7 @@
 3. [定义服务接口](#3-定义服务接口)
 4. [AndroidManifest 声明](#4-androidmanifest-声明)
 5. [初始化（每个进程）](#5-初始化每个进程)
-6. [五种调用模式](#6-五种调用模式)
+6. [调用模式](#6-调用模式)
    - [6.1 请求/响应 `@IpcMethod`](#61-请求响应-ipcmethod)
    - [6.2 类型安全错误处理 `callSafe`](#62-类型安全错误处理-callsafe)
    - [6.3 发布/订阅事件 `@IpcEvent`](#63-发布订阅事件-ipcevent)
@@ -35,11 +35,12 @@
 |----|------|
 | minSdk | ≥ 24 |
 | Java | 17 |
-| Kotlin | 1.9.x（与 KSP 版本对齐） |
-| KSP | `1.9.22-1.0.17`（与 Kotlin 版本一致） |
+| Kotlin | 1.9.x（Typed RPC 需与 KSP 版本对齐） |
+| KSP | Typed RPC 使用；纯 Dynamic RPC 客户端不需要 |
 | 协程 | `kotlinx-coroutines-android` |
 
-所有跨进程数据类型必须实现 `Parcelable`。
+Typed RPC 的复合数据类型必须实现 `Parcelable`。Dynamic RPC 禁止业务 `Parcelable`，使用
+`DynamicPayload` 提供的平台基础类型，因而不需要共享模型类。
 
 ---
 
@@ -55,7 +56,7 @@ plugins {
 }
 ```
 
-### 模块 `build.gradle.kts`
+### Typed RPC 模块 `build.gradle.kts`
 
 ```kotlin
 plugins {
@@ -85,6 +86,23 @@ dependencies {
 ```
 
 三个要点：① 应用 KSP 插件，② 打开 `aidl`，③ 用 `ksp(...)` 引入处理器（不是 `implementation`）。
+
+### Dynamic-RPC-only 客户端
+
+不定义注解接口、只通过 route/topic 调用时，不需要 KSP：
+
+```kotlin
+plugins {
+    id("com.android.application")
+    id("org.jetbrains.kotlin.android")
+}
+
+dependencies {
+    implementation("com.github.Coder-MarkBest.Falcon:falcon-core:1.0.0")
+}
+```
+
+服务发现仍需配置 `peerPackages` 和 AndroidManifest `<queries>`；省略的是共享接口、模型和代码生成依赖。
 
 > **自定义生成的 Registry 名字**：默认取接口所在包名的最后一段首字母大写，例如 `com.falcon.demo` → `DemoFalconGeneratedRegistry`。要固定名字：
 > ```kotlin
@@ -204,7 +222,7 @@ class DemoApp : Application() {
 
 ---
 
-## 6. 五种调用模式
+## 6. 调用模式
 
 客户端用 `Falcon.getService<T>()` 拿到代理后，像调用本地对象一样使用。
 以下片段摘自 [`CrossClientActivity.kt`](../falcon-cross-client/src/main/java/com/falcon/cross/client/CrossClientActivity.kt)。

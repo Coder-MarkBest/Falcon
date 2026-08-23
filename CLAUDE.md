@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project: Falcon IPC Framework
 
-Android 车载系统跨进程通信(IPC)框架，基于 Binder + KSP 编译期代码生成。
+Android 车载系统跨进程通信框架。Binder 为统一传输层，上层同时提供 KSP Typed RPC 和无需共享源码的 Dynamic RPC。
 
 ## Build Commands
 
@@ -34,7 +34,7 @@ Android 车载系统跨进程通信(IPC)框架，基于 Binder + KSP 编译期�
 
 ## Architecture
 
-Five Gradle modules with clear dependency chain:
+Seven Gradle modules:
 
 ```
 falcon-annotations (pure Kotlin, no Android)
@@ -59,8 +59,8 @@ over the real generated Proxy/Dispatcher code.
 - All calls go over Binder (`IIpcHost.invoke(IpcEnvelope)`); payloads are kept under the ~1MB Binder transaction limit (no large-payload use case in scope)
 - The SharedMemory hybrid path was removed (see `docs/superpowers/specs/2026-06-17-overengineering-audit.md`) — it was unused dead weight given no high-frequency large payloads
 
-### Dispatch: fully Binder-native (KSP-generated, no reflection / no `Parcel.marshall()`)
-ALL IPC — `@IpcMethod` (request/response), `@IpcEvent`/`@IpcStream` (Flow), and `@IpcCallback` — is handled by KSP-generated classes with typed `Bundle` payloads and a stable `methodId` (FNV-1a hash of the method signature; `IpcReply` params are excluded so proxy and dispatcher agree):
+### Dispatch: Binder-native, with two API modes
+Typed RPC (`@IpcMethod`, `@IpcEvent`/`@IpcStream`, `@IpcCallback`) is handled by KSP-generated classes with typed `Bundle` payloads and stable method ids:
 - **`Xxx_Dispatcher`** (server): `dispatch(methodId, Bundle): Bundle` for request/response; `eventFlow(methodId): Flow<Bundle>?` for events/streams; `invokeCallback(methodId, Bundle, reply)` for callbacks. No reflection.
 - **`Xxx_Proxy`** (client): packs args into a typed `Bundle`, sends over Binder with the `methodId`. Events use `EventProxy.typedRemoteFlow` (subscribe + decode); callbacks use `transport.invokeCallback`.
 - Server-side event Flows are collected lazily and ref-counted by `EventCollector` (collect on first subscriber, cancel on last).
@@ -73,6 +73,8 @@ ALL IPC — `@IpcMethod` (request/response), `@IpcEvent`/`@IpcStream` (Flow), an
   }
   ```
 - Removed legacy: `IpcSerializer`, dynamic `ProxyFactory`, `MessageRouter` reflective dispatch, `EventBus`, `StubGenerator`/`_Stub`, and the `IpcEnvelope` byte-array `args` field — the wire format is Bundle-only.
+
+Dynamic RPC uses the same Binder, discovery, permission, rate-limit, interceptor and monitor path, but addresses versioned routes/topics by string. `DynamicPayload` only permits platform wire types, so independently built APKs do not share Kotlin interfaces or model classes. Peer/version negotiation is cached and invalidated on disconnect.
 
 > **Verification gap:** end-to-end generated dispatch (request/response, events, callbacks) is covered by JVM round-trip tests through the real generated code (`falcon-benchmark` `FalconGeneratedRoundTripTest`). True cross-process (two-process Binder) verification still requires a device/emulator and is not run in CI-less environments.
 
@@ -90,10 +92,11 @@ ALL IPC — `@IpcMethod` (request/response), `@IpcEvent`/`@IpcStream` (Flow), an
 - `com.falcon.ipc.security` — SignatureGuard (mandatory signature check), PermissionChecker (allow/deny lists), RateLimiter
 - `com.falcon.ipc.monitor` — MonitorFacade (stats OFF by default), IpcInterceptor, IpcCallStats, MonitorLevel
 - `com.falcon.ipc.service` — IpcService marker, IpcReply callback
+- `com.falcon.ipc.dynamic` — source-decoupled request/response payloads and capabilities
 
 ### Service discovery
-- IpcRegistryProvider (ContentProvider, multiprocess=true) stores service registry in SQLite
-- PeerManager uses ContentObserver to detect new services and bindService() + linkToDeath() for connections
+- IpcRegistryProvider keeps an ephemeral in-memory registry in its designated host process
+- PeerManager uses ContentObserver and ContentProvider.call("getHost") to receive the Binder directly, then linkToDeath() for connections
 - Exponential backoff reconnection (500ms → 30s max)
 
 ### Security model
@@ -115,9 +118,10 @@ Access control is configured via the `security { accessRules = ... }` DSL, not a
 ## Conventions
 
 - Kotlin-first, coroutines over Handler/Thread
-- All cross-process data must implement Parcelable
+- Typed RPC complex data implements Parcelable; Dynamic RPC uses platform-only DynamicPayload fields
 - Logs via FalconLogger, TAG format: `Falcon:[Module]`
 - Monitor/stats default OFF (MonitorLevel.NONE) — zero overhead in production
+- Production release checklist: `docs/PRODUCTION.md`
 - AIDL files in `src/main/aidl/`, enabled via `buildFeatures { aidl = true }`
 
 ## Design docs

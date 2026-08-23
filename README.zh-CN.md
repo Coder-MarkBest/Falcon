@@ -2,7 +2,7 @@
 
 # 🦅 Falcon IPC
 
-**面向 Android 的类型安全、零反射跨进程通信框架 —— 基于 Binder + KSP 编译期代码生成。**
+**面向生产环境的 Android IPC：同时支持 KSP 强类型 API 与完全解耦的 Dynamic RPC。**
 
 [![CI](https://github.com/Coder-MarkBest/Falcon/actions/workflows/ci.yml/badge.svg)](https://github.com/Coder-MarkBest/Falcon/actions/workflows/ci.yml)
 [![JitPack](https://jitpack.io/v/Coder-MarkBest/Falcon.svg)](https://jitpack.io/#Coder-MarkBest/Falcon)
@@ -21,6 +21,9 @@ Falcon 把一个普通的 Kotlin 接口变成完全类型化的跨进程 API。�
 没有反射 —— 只有走 Binder 的类型化 `Bundle` 和一个稳定的、基于哈希的方法 id。
 
 专为 **Android 车载 / 多 App 系统** 设计：来自不同供应商、独立签名的 APK 之间需要安全地互相通信。
+
+不适合共享 Kotlin 契约模块时，可使用版本化 Dynamic RPC route/topic。客户端与服务端只共享
+协议文档和字段约定，不共享接口源码、Parcelable 模型或 KSP Registry。
 
 ```kotlin
 interface INavService : IpcService {
@@ -92,13 +95,14 @@ dependencies {
 ```
 
 > KSP 插件版本必须跟随项目的 Kotlin 版本（`<kotlin>-<ksp>`）。
+> 只使用 Dynamic RPC 的客户端仅需依赖 `falcon-core`，无需应用 KSP 插件或引入 `falcon-ksp`。
 
 ## 快速开始
 
 四步实现一个请求/响应服务。（完整集成 —— manifest 声明、跨 App 签名、事件/流/回调 ——
 见 **[docs/USAGE.md](docs/USAGE.md)**。）
 
-**1 · 定义契约** —— 一个两端都编译的共享模块：
+**1 · 定义强类型契约** —— 一个两端都编译的共享模块（项目必须源码解耦时跳过此步，使用 Dynamic RPC）：
 
 ```kotlin
 interface IGreeter : IpcService {
@@ -134,6 +138,21 @@ lifecycleScope.launch {
 在 manifest 中注册 Provider（服务端还需注册 host service）—— 准确的声明见
 [docs/USAGE.md](docs/USAGE.md)。
 
+无需共享接口的调用方式：
+
+```kotlin
+// 服务端
+falcon.route("navigation/location/get", version = 2) {
+    DynamicResponse.success(DynamicPayload.build { putDouble("latitude", 39.9042) })
+}
+
+// 客户端：只依赖 falcon-core
+val response = falcon.call(
+    "navigation/location/get",
+    supportedVersions = setOf(1, 2)
+)
+```
+
 ## IPC 模式
 
 | 注解 | 形态 | 签名 |
@@ -142,6 +161,8 @@ lifecycleScope.launch {
 | `@IpcEvent` | 发布 / 订阅 | `fun m(): Flow<T>` |
 | `@IpcStream` | 分块流 | `fun m(): Flow<ByteArray>` |
 | `@IpcCallback` | 异步回调 | `fun m(args, reply: IpcReply<T>)` |
+| Dynamic route | 解耦请求 / 响应 | `falcon.call("route", body = payload)` |
+| Dynamic topic | 解耦发布 / 订阅 | `falcon.subscribe("topic")` |
 
 **支持的 wire 类型**：基本类型、`String`、`ByteArray`、`Parcelable`、枚举，以及它们的
 `List` / `Map`。`data class` 载荷必须实现 `Parcelable`（手写，或用 `kotlin-parcelize` 的
@@ -162,7 +183,7 @@ lifecycleScope.launch {
                               IpcRegistryProvider（ContentProvider）── binder 直传发现
 ```
 
-五模块依赖链：
+七模块工程布局：
 
 ```
 falcon-annotations   纯 Kotlin 注解（无 Android 依赖）
@@ -172,6 +193,7 @@ falcon-core          运行时：传输、安全、发现、监控
 falcon-ksp           KSP 处理器 → Proxy / Dispatcher / Registry
       ↑
 falcon-benchmark · falcon-cross-server · falcon-cross-client   App 与示例
+falcon-gradle-plugin 自动生成 Android 11+ 对端包可见性声明
 ```
 
 ## 安全模型
@@ -220,6 +242,7 @@ Broadcast 横向对比（同 App 内）。任何 benchmark 都需在真机/模�
 - **跨 App 示例** —— `falcon-cross-server` + `falcon-cross-client`：两个独立签名、互相信任证书的
   APK，演示全部 16 种 IPC 模式、延迟 benchmark 和并发压力测试，模拟多供应商车载系统。
 - **集成指南** —— [docs/USAGE.md](docs/USAGE.md)。
+- **生产准入** —— [docs/PRODUCTION.md](docs/PRODUCTION.md)。
 - **设计文档** —— [docs/superpowers/specs](docs/superpowers/specs)。
 
 ## 构建与测试
@@ -240,8 +263,9 @@ Broadcast 横向对比（同 App 内）。任何 benchmark 都需在真机/模�
 - [x] 跨 App 发现、互相签名信任、Schema 兼容校验
 - [x] headless server 前台服务保活（Android 14 冻结器安全）
 - [x] CI + JitPack 分发
+- [x] 无需共享接口/模型模块的版本化 Dynamic RPC
+- [x] Release/R8/Lint 门禁与双 APK instrumentation CI
 - [ ] 发布到 Maven Central
-- [ ] 可选的大载荷（SharedMemory）传输（flag 开关）
 
 ## 贡献
 
