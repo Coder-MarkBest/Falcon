@@ -29,25 +29,10 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 
-      # Pure-Kotlin + JVM-side coverage and the Robolectric round-trip suites.
-      # These run the REAL KSP-generated Proxy/Dispatcher code, so they catch
-      # codec/dispatch regressions without a device.
-      - name: Unit tests
-        run: |
-          ./gradlew \
-            :falcon-core:testDebugUnitTest \
-            :falcon-benchmark:testDebugUnitTest \
-            :falcon-cross-server:testDebugUnitTest \
-            --stacktrace
-
-      # Verify the consumable library artifacts assemble cleanly.
-      - name: Assemble libraries
-        run: |
-          ./gradlew \
-            :falcon-annotations:assemble \
-            :falcon-core:assembleRelease \
-            :falcon-ksp:assemble \
-            --stacktrace
+      # Full quality gate: unit/Robolectric tests, KSP consumers, lint, release R8,
+      # library AARs and both sample APKs.
+      - name: Build, test and lint all modules
+        run: ./gradlew build --stacktrace
 
       - name: Upload test reports
         if: always()
@@ -56,3 +41,35 @@ jobs:
           name: test-reports
           path: '**/build/reports/tests/'
           if-no-files-found: ignore
+
+      - name: Upload lint reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-reports
+          path: '**/build/reports/lint-results-*'
+          if-no-files-found: ignore
+
+  cross-app-instrumentation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v3
+      - name: Enable Gradle wrapper
+        run: chmod +x ./gradlew
+      - name: Run real two-APK Binder tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          disable-animations: true
+          script: |
+            ./gradlew :falcon-cross-server:assembleDebug
+            adb install -r falcon-cross-server/build/outputs/apk/debug/falcon-cross-server-debug.apk
+            adb shell am start -W com.falcon.cross.server/.ServerActivity
+            ./gradlew :falcon-cross-client:connectedDebugAndroidTest --stacktrace

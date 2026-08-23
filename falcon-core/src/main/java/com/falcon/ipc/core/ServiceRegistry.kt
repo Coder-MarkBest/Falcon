@@ -11,6 +11,7 @@ class ServiceRegistry {
     private val services = ConcurrentHashMap<String, IpcService>()
     private val dispatchers = ConcurrentHashMap<String, IpcDispatcher>()
     private val schemas = ConcurrentHashMap<String, Int>()
+    internal val dynamic = DynamicRpcRegistry()
 
     fun <T : IpcService> register(serviceClass: KClass<T>, impl: T) {
         val key = serviceClass.qualifiedName
@@ -40,6 +41,7 @@ class ServiceRegistry {
         services.clear()
         dispatchers.clear()
         schemas.clear()
+        dynamic.clear()
         FalconLogger.d("Registry", "All services unregistered")
     }
 }

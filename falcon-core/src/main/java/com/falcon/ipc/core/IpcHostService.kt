@@ -14,11 +14,13 @@ import com.falcon.ipc.aidl.IIpcEventCallback
 import com.falcon.ipc.aidl.IIpcHost
 import com.falcon.ipc.protocol.ErrorCode
 import com.falcon.ipc.protocol.IpcEnvelope
+import com.falcon.ipc.dynamic.DynamicProtocol
 import com.falcon.ipc.security.SignatureGuard
 import com.falcon.ipc.util.CallerResolver
 import com.falcon.ipc.util.FalconLogger
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
+import kotlinx.coroutines.flow.map
 
 class IpcHostService : Service() {
 
@@ -125,8 +127,6 @@ class IpcHostService : Service() {
                 IpcEnvelope(requestId = request.requestId, argsBundle = result as android.os.Bundle)
             } catch (e: SecurityException) {
                 IpcEnvelope.error(ErrorCode.PERMISSION_DENIED, e.message ?: "Denied", request.requestId)
-            } catch (e: IllegalStateException) {
-                IpcEnvelope.error(ErrorCode.RATE_LIMITED, e.message ?: "Rate limited", request.requestId)
             } catch (e: com.falcon.ipc.protocol.IpcException) {
                 IpcEnvelope.error(e.errorCode, e.message ?: "IPC error", request.requestId)
             } catch (e: Exception) {
@@ -135,10 +135,27 @@ class IpcHostService : Service() {
         }
 
         override fun subscribe(eventKey: String, callback: IIpcEventCallback) {
+            val callingUid = Binder.getCallingUid()
+            val callingPid = Binder.getCallingPid()
+            if (!signatureGuard.verify(this@IpcHostService, callingUid)) {
+                callback.onEvent(IpcEnvelope.error(ErrorCode.UNAUTHORIZED, "Signature mismatch"))
+                return
+            }
+            if (eventKey.startsWith(DynamicProtocol.TOPIC_PREFIX)) {
+                subscribeDynamicTopic(eventKey, callback, callingUid, callingPid)
+                return
+            }
             val parts = eventKey.split("#")
             val methodId = if (parts.size == 2) parts[1].toIntOrNull() else null
             if (methodId != null) {
                 val serviceKey = parts[0]
+                val callerPackage = callerResolver.resolve(callingUid)
+                val callerProcess = callerResolver.resolveProcessName(callingPid) ?: callerPackage
+                if (!messageRouter.checkServiceAccess(serviceKey, callerPackage, callerProcess)) {
+                    try { callback.onEvent(IpcEnvelope.error(ErrorCode.PERMISSION_DENIED, "Subscription denied")) }
+                    catch (_: Exception) {}
+                    return
+                }
                 // Multi-app: if this build has no event for the methodId, surface METHOD_NOT_FOUND
                 // instead of silently registering a subscription that never emits.
                 val dispatcher = serviceRegistry.getDispatcher(serviceKey)
@@ -148,7 +165,11 @@ class IpcHostService : Service() {
                     return
                 }
             }
-            eventSubscribers.getOrPut(eventKey) { CopyOnWriteArrayList() }.add(callback)
+            if (!addSubscriber(eventKey, callback)) {
+                try { callback.onEvent(IpcEnvelope.error(ErrorCode.RATE_LIMITED, "Too many subscribers")) }
+                catch (_: Exception) {}
+                return
+            }
             FalconLogger.d("Host", "Subscribed: $eventKey")
             if (methodId != null) {
                 val serviceKey = parts[0]
@@ -193,13 +214,65 @@ class IpcHostService : Service() {
             return serviceRegistry.getAllServices().keys.joinToString(",")
         }
 
+        private fun subscribeDynamicTopic(
+            eventKey: String,
+            callback: IIpcEventCallback,
+            callingUid: Int,
+            callingPid: Int
+        ) {
+            val suffix = eventKey.removePrefix(DynamicProtocol.TOPIC_PREFIX)
+            val separator = suffix.lastIndexOf('#')
+            val topic = if (separator > 0) android.net.Uri.decode(suffix.substring(0, separator)) else ""
+            val version = if (separator > 0) suffix.substring(separator + 1).toIntOrNull() else null
+            val callerPackage = callerResolver.resolve(callingUid)
+            val callerProcess = callerResolver.resolveProcessName(callingPid) ?: callerPackage
+            if (topic.isBlank() || version == null ||
+                !messageRouter.checkDynamicAccess("topic", topic, callerPackage, callerProcess)
+            ) {
+                callback.onEvent(IpcEnvelope.error(ErrorCode.PERMISSION_DENIED, "Dynamic topic denied or invalid"))
+                return
+            }
+            val source = serviceRegistry.dynamic.topicFlow(topic, version)
+            if (source == null) {
+                callback.onEvent(IpcEnvelope.error(ErrorCode.METHOD_NOT_FOUND, "Topic not found: $topic v$version"))
+                return
+            }
+            if (!addSubscriber(eventKey, callback)) {
+                try { callback.onEvent(IpcEnvelope.error(ErrorCode.RATE_LIMITED, "Too many subscribers")) }
+                catch (_: Exception) {}
+                return
+            }
+            eventCollector.onSubscribe(eventKey, { source.map { it.toBundle() } }, { emitBundle(eventKey, it) })
+            linkSubscriberDeath(eventKey, callback)
+        }
+
         override fun invokeCallback(request: IpcEnvelope, reply: com.falcon.ipc.aidl.IIpcEventCallback) {
+            val callingUid = Binder.getCallingUid()
+            val callingPid = Binder.getCallingPid()
+            if (!signatureGuard.verify(this@IpcHostService, callingUid)) {
+                try { reply.onEvent(IpcEnvelope.error(ErrorCode.UNAUTHORIZED, "Signature mismatch", request.requestId)) }
+                catch (_: Exception) {}
+                return
+            }
+            val callerPackage = callerResolver.resolve(callingUid)
+            val callerProcess = callerResolver.resolveProcessName(callingPid) ?: callerPackage
+            if (!messageRouter.checkServiceAccess(request.serviceKey, callerPackage, callerProcess)) {
+                try { reply.onEvent(IpcEnvelope.error(ErrorCode.PERMISSION_DENIED, "Callback denied", request.requestId)) }
+                catch (_: Exception) {}
+                return
+            }
+            if (!messageRouter.tryAcquire(callingPid)) {
+                try { reply.onEvent(IpcEnvelope.error(ErrorCode.RATE_LIMITED, "Rate limit exceeded", request.requestId)) }
+                catch (_: Exception) {}
+                return
+            }
             val d = serviceRegistry.getDispatcher(request.serviceKey)
             if (d == null) {
                 FalconLogger.w("Host", "invokeCallback: service not found: ${request.serviceKey}")
                 try {
                     reply.onEvent(IpcEnvelope.error(ErrorCode.SERVICE_NOT_FOUND, "Service not found: ${request.serviceKey}", request.requestId))
                 } catch (e: Exception) { FalconLogger.w("Host", "callback error reply failed: ${e.message}") }
+                messageRouter.release(callingPid)
                 return
             }
             try {
@@ -214,8 +287,37 @@ class IpcHostService : Service() {
                 try {
                     reply.onEvent(IpcEnvelope.error(ErrorCode.UNKNOWN, "Service error: ${e.message}", request.requestId))
                 } catch (e2: Exception) { FalconLogger.w("Host", "callback error reply failed: ${e2.message}") }
+            } finally {
+                messageRouter.release(callingPid)
             }
         }
+    }
+
+    private fun linkSubscriberDeath(eventKey: String, callback: IIpcEventCallback) {
+        val released = java.util.concurrent.atomic.AtomicBoolean(false)
+        val recipient = IBinder.DeathRecipient {
+            if (released.compareAndSet(false, true)) {
+                eventSubscribers[eventKey]?.remove(callback)
+                eventCollector.onUnsubscribe(eventKey)
+                deathRecipients.remove(callback)
+            }
+        }
+        try {
+            callback.asBinder().linkToDeath(recipient, 0)
+            deathRecipients[callback] = recipient to released
+        } catch (_: Exception) {
+            if (released.compareAndSet(false, true)) {
+                eventSubscribers[eventKey]?.remove(callback)
+                eventCollector.onUnsubscribe(eventKey)
+            }
+        }
+    }
+
+    private fun addSubscriber(eventKey: String, callback: IIpcEventCallback): Boolean {
+        val subscribers = eventSubscribers.getOrPut(eventKey) { CopyOnWriteArrayList() }
+        if (subscribers.size >= 1_024) return false
+        subscribers.addIfAbsent(callback)
+        return true
     }
 
     fun emitEvent(eventKey: String, event: IpcEnvelope) {

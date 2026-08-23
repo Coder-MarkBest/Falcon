@@ -8,7 +8,7 @@ import java.util.concurrent.atomic.AtomicInteger
 class RateLimiter(
     private val maxCallsPerSecond: Int = 1000,
     private val maxConcurrentCalls: Int = 50,
-    private val clock: () -> Long = System::currentTimeMillis
+    private val clock: () -> Long = { System.nanoTime() / 1_000_000L }
 ) {
     private val windows = ConcurrentHashMap<Int, ArrayDeque<Long>>()
     private val concurrentCalls = ConcurrentHashMap<Int, AtomicInteger>()

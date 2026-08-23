@@ -134,6 +134,10 @@ lifecycleScope.launch {
 Register the provider (and, for servers, the host service) in your manifest — see
 [docs/USAGE.md](docs/USAGE.md) for the exact entries.
 
+For deployments that must not share a Kotlin interface module, Falcon also supports
+version-negotiated Dynamic RPC routes/topics; see [Dynamic RPC](docs/USAGE.md#66-dynamic-rpc客户端服务端完全解耦).
+Before a vehicle release, apply the [production readiness checklist](docs/PRODUCTION.md).
+
 ## IPC patterns
 
 | Annotation | Shape | Signature |

@@ -1,6 +1,6 @@
 # Falcon IPC 集成与使用指南
 
-本文档面向**在自己的工程里集成 Falcon** 的开发者，覆盖从依赖配置到 5 种调用模式的完整用法。
+本文档面向**在自己的工程里集成 Falcon** 的开发者，覆盖强类型 RPC 和无需共享接口的 Dynamic RPC。
 配套可运行示例见 `:falcon-cross-server` + `:falcon-cross-client` 模块（两个独立签名 APK，模拟多供应商车载系统跨 App 通信）。
 
 > 想先看整体设计与架构，读 [README.md](../README.md)。
@@ -21,6 +21,7 @@
    - [6.3 发布/订阅事件 `@IpcEvent`](#63-发布订阅事件-ipcevent)
    - [6.4 大数据流 `@IpcStream`](#64-大数据流-ipcstream)
    - [6.5 异步回调 `@IpcCallback`](#65-异步回调-ipccallback)
+   - [6.6 Dynamic RPC（客户端/服务端完全解耦）](#66-dynamic-rpc客户端服务端完全解耦)
 7. [安全配置](#7-安全配置)
 8. [配置项参考](#8-配置项参考)
 9. [类型支持与限制](#9-类型支持与限制)
@@ -258,6 +259,65 @@ job.cancel()
 
 > ⚠️ **事件/流是“热订阅”**：服务端 Flow 的**完成（onComplete）不会跨进程传播**到客户端。
 > 客户端的订阅只在你**取消收集**（`job.cancel()` 或 `take(n)`）时才结束。
+
+### 6.6 Dynamic RPC（客户端/服务端完全解耦）
+
+Dynamic RPC 不要求客户端和服务端共享 Kotlin 接口、Parcelable 数据类或 KSP Registry。
+双方只约定 route/topic、协议版本和字段名称，类似 HTTP API 契约。
+
+服务端注册版本化 route：
+
+```kotlin
+val falcon = Falcon.init(context)
+
+falcon.route("navigation/location/get", version = 2) { request ->
+    val coordinateSystem = request.body.getString("coordinateSystem") ?: "WGS84"
+    DynamicResponse.success(DynamicPayload.build {
+        putDouble("latitude", 39.9042)
+        putDouble("longitude", 116.4074)
+        putString("coordinateSystem", coordinateSystem)
+    })
+}
+```
+
+客户端只依赖 `falcon-core`，不依赖服务端 API 模块：
+
+```kotlin
+val response = Falcon.getInstance().call(
+    route = "navigation/location/get",
+    supportedVersions = setOf(1, 2),
+    body = DynamicPayload.build {
+        putString("coordinateSystem", "WGS84")
+    }
+)
+
+if (response.isSuccessful) {
+    val latitude = response.body.getDouble("latitude")
+}
+```
+
+框架会选择双方都支持的最高版本；没有兼容版本时抛出 `IpcException(SERVICE_NOT_FOUND)`。
+
+动态 topic：
+
+```kotlin
+// 服务端
+falcon.topic("navigation/location/changed", version = 1)
+falcon.publish(
+    "navigation/location/changed",
+    DynamicPayload.build { putDouble("latitude", 39.9042) }
+)
+
+// 客户端
+Falcon.getInstance()
+    .subscribe("navigation/location/changed", supportedVersions = setOf(1))
+    .collect { payload -> updateLocation(payload.getDouble("latitude")) }
+```
+
+可通过 `dynamicCapabilities()` 查询当前可见的 route、topic 和版本。动态 payload 只支持
+`Int/Long/Float/Double/Boolean/String/ByteArray/StringList` 与嵌套 `DynamicPayload`，禁止业务
+`Parcelable`，从而保证独立 APK 不需要加载对方的数据类。route/topic 权限键分别为
+`dynamic.route.<route>` 和 `dynamic.topic.<topic>`，可继续使用现有 `security.accessRules` 配置。
 > 因此**不要**对跨进程流用无界的 `.toList()` / `.collect{}` 去等它“结束”——会永久挂起。
 > 始终用 `take(n)`、`takeWhile{}` 或主动 `cancel` 来界定收集范围。
 

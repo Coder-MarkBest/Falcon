@@ -29,7 +29,8 @@ class DiagnosticsManager {
 
     // Async writer: a single-thread executor drains the write queue to avoid
     // blocking the IPC hot path with synchronous file I/O.
-    private val writeQueue = LinkedBlockingQueue<String>()
+    private val writeQueue = LinkedBlockingQueue<String>(4_096)
+    private val droppedWrites = AtomicLong(0)
     @Volatile private var writerThread = createWriterThread()
     @Volatile private var writerRunning = false
 
@@ -79,17 +80,17 @@ class DiagnosticsManager {
         if (!enabled.get()) return
 
         entries.add(entry)
-        entryCount.incrementAndGet()
+        val retained = entryCount.incrementAndGet()
 
         // Trim if over limit
-        while (entries.size > maxEntries) {
-            entries.poll()
+        if (retained > maxEntries && entries.poll() != null) {
+            entryCount.decrementAndGet()
         }
 
         // Enqueue for async write — non-blocking
-        dumpDir?.let { dir ->
+        dumpDir?.let {
             val line = "${entry.timestamp}|${entry.serviceKey}|${entry.method}|${entry.latencyMs}|${entry.success}|${entry.transportType}|${entry.requestId}"
-            writeQueue.offer(line)
+            if (!writeQueue.offer(line)) droppedWrites.incrementAndGet()
         }
     }
 
@@ -158,6 +159,9 @@ class DiagnosticsManager {
 
     fun getEntryCount(): Long = entryCount.get()
 
+    /** Number of diagnostic file records dropped because disk writing could not keep up. */
+    fun getDroppedWriteCount(): Long = droppedWrites.get()
+
     fun getRecentEntries(count: Int): List<DiagnosticEntry> {
         return entries.toList().takeLast(count)
     }
@@ -165,6 +169,7 @@ class DiagnosticsManager {
     fun clear() {
         entries.clear()
         entryCount.set(0)
+        droppedWrites.set(0)
     }
 
     fun getStats(): Map<String, DiagnosticStats> {

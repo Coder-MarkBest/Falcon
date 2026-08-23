@@ -85,7 +85,8 @@ class MessageRouterTest {
         try {
             router.handleLocal(envelope, "com.test", 1000)
             fail("Should throw")
-        } catch (e: IllegalStateException) {
+        } catch (e: com.falcon.ipc.protocol.IpcException) {
+            assertEquals(com.falcon.ipc.protocol.ErrorCode.SERVICE_NOT_FOUND, e.errorCode)
             assertTrue(e.message?.contains("not found") == true)
         }
     }
@@ -194,6 +195,7 @@ class MessageRouterTest {
             IpcEnvelope(serviceKey = echoKey, method = "echo", methodId = 1, argsBundle = Bundle()),
             "proc", 1234)
         call() // first allowed
-        assertThrows(IllegalStateException::class.java) { call() } // second over limit
+        val error = assertThrows(com.falcon.ipc.protocol.IpcException::class.java) { call() }
+        assertEquals(com.falcon.ipc.protocol.ErrorCode.RATE_LIMITED, error.errorCode)
     }
 }

@@ -10,6 +10,13 @@ import com.falcon.ipc.security.PermissionChecker
 import com.falcon.ipc.security.RateLimiter
 import com.falcon.ipc.security.SignatureGuard
 import com.falcon.ipc.protocol.IpcEnvelope
+import com.falcon.ipc.protocol.ErrorCode
+import com.falcon.ipc.protocol.IpcException
+import com.falcon.ipc.dynamic.DynamicCapability
+import com.falcon.ipc.dynamic.DynamicPayload
+import com.falcon.ipc.dynamic.DynamicProtocol
+import com.falcon.ipc.dynamic.DynamicRequest
+import com.falcon.ipc.dynamic.DynamicResponse
 import com.falcon.ipc.service.IpcService
 import com.falcon.ipc.transport.TransportResult
 import com.falcon.ipc.util.CallerResolver
@@ -18,6 +25,11 @@ import com.falcon.ipc.util.ProcessUtils
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
 import kotlin.reflect.KClass
 
 class FalconManager internal constructor(
@@ -47,7 +59,7 @@ class FalconManager internal constructor(
         config.security.maxConcurrentCalls
     )
     internal val messageRouter = MessageRouter(
-        serviceRegistry, monitor, permissionChecker, rateLimiter
+        serviceRegistry, monitor, permissionChecker, rateLimiter, config.timeout.callMs
     )
 
     private val registryUri = Uri.parse(
@@ -68,6 +80,8 @@ class FalconManager internal constructor(
     // Without this, every getService() re-probes all peers and rebuilds the proxy.
     private data class CachedProxy(val proxy: Any, val processName: String)
     private val proxyCache = java.util.concurrent.ConcurrentHashMap<String, CachedProxy>()
+    private data class CachedDynamicPeer(val peer: PeerConnection, val version: Int)
+    private val dynamicPeerCache = java.util.concurrent.ConcurrentHashMap<String, CachedDynamicPeer>()
 
     fun start() {
         FalconLogger.enabled = true
@@ -131,6 +145,7 @@ class FalconManager internal constructor(
             pm.onConnectionStateChanged { state, processName ->
                 if (state == IpcState.DISCONNECTED) {
                     proxyCache.entries.removeAll { it.value.processName == processName }
+                    dynamicPeerCache.entries.removeAll { it.value.peer.processName == processName }
                 }
             }
             pm.start()
@@ -265,9 +280,182 @@ class FalconManager internal constructor(
     /** Low-level accessor for tests. Returns the current peer connection map (read-only). */
     fun getPeerMap(): Map<String, PeerConnection> = peerManager?.getAllConnections() ?: emptyMap()
 
+    /** Register a route without sharing a Kotlin interface or model class with clients. */
+    fun route(
+        route: String,
+        version: Int = 1,
+        handler: suspend (DynamicRequest) -> DynamicResponse
+    ) {
+        serviceRegistry.dynamic.registerRoute(route, version, handler)
+        registerDynamicDiscovery("route", route)
+    }
+
+    /** Declare a versioned pub/sub topic. Call [publish] to emit values. */
+    fun topic(topic: String, version: Int = 1) {
+        serviceRegistry.dynamic.registerTopic(topic, version)
+        registerDynamicDiscovery("topic", topic)
+    }
+
+    fun publish(topic: String, body: DynamicPayload, version: Int = 1): Boolean =
+        serviceRegistry.dynamic.publish(topic, version, body)
+
+    /**
+     * HTTP-like dynamic request. The highest mutually supported protocol version is selected.
+     * Neither side needs the other's Kotlin interface or data classes.
+     */
+    suspend fun call(
+        route: String,
+        supportedVersions: Set<Int> = setOf(1),
+        headers: DynamicPayload = DynamicPayload.EMPTY,
+        body: DynamicPayload = DynamicPayload.EMPTY
+    ): DynamicResponse {
+        require(supportedVersions.isNotEmpty() && supportedVersions.all { it > 0 }) {
+            "supportedVersions must contain positive versions"
+        }
+        val localVersion = serviceRegistry.dynamic.negotiateRoute(route, supportedVersions)
+        if (localVersion != null) {
+            val requestId = java.util.UUID.randomUUID().toString()
+            val response = withContext(threadPool.dispatcher) {
+                messageRouter.handleLocal(
+                    dynamicCallEnvelope(route, localVersion, requestId, headers, body),
+                    context.packageName,
+                    android.os.Process.myPid(),
+                    ProcessUtils.getCurrentProcessName(context)
+                ) as android.os.Bundle
+            }
+            return DynamicProtocol.decodeResponse(response)
+        }
+
+        val selected = selectDynamicPeer("route", route, supportedVersions)
+            ?: throw IpcException(ErrorCode.SERVICE_NOT_FOUND, "No compatible dynamic route: $route")
+        val requestId = java.util.UUID.randomUUID().toString()
+        val envelope = dynamicCallEnvelope(route, selected.second, requestId, headers, body)
+        return when (val result = withContext(threadPool.dispatcher) { selected.first.transport.invoke(envelope) }) {
+            is TransportResult.Success -> DynamicProtocol.decodeResponse(result.data as? android.os.Bundle ?: android.os.Bundle())
+            is TransportResult.Error -> throw IpcException(result.code, result.message)
+        }
+    }
+
+    /** Subscribe lazily; discovery and version negotiation happen when collection starts. */
+    fun subscribe(
+        topic: String,
+        supportedVersions: Set<Int> = setOf(1)
+    ): Flow<DynamicPayload> = flow {
+        require(supportedVersions.isNotEmpty() && supportedVersions.all { it > 0 })
+        val localVersion = serviceRegistry.dynamic.negotiateTopic(topic, supportedVersions)
+        if (localVersion != null) {
+            emitAll(serviceRegistry.dynamic.topicFlow(topic, localVersion) ?: return@flow)
+            return@flow
+        }
+        val selected = selectDynamicPeer("topic", topic, supportedVersions)
+            ?: throw IpcException(ErrorCode.SERVICE_NOT_FOUND, "No compatible dynamic topic: $topic")
+        val eventKey = DynamicProtocol.TOPIC_PREFIX + android.net.Uri.encode(topic) + "#" + selected.second
+        emitAll(EventProxy.typedRemoteFlow(
+            eventKey,
+            selected.first.transport,
+            eventBufferCapacity,
+            eventOverflow
+        ) { DynamicPayload.fromBundle(it) })
+    }
+
+    /** Return locally visible and remotely advertised dynamic capabilities. */
+    suspend fun dynamicCapabilities(): List<DynamicCapability> {
+        val result = serviceRegistry.dynamic.capabilities().toMutableSet()
+        val peers = peerManager?.getAllConnections()?.values.orEmpty()
+        for (peer in peers) {
+            val response = withContext(threadPool.dispatcher) {
+                peer.transport.invoke(IpcEnvelope(
+                    serviceKey = DynamicProtocol.SERVICE_KEY,
+                    method = DynamicProtocol.CAPABILITIES
+                ))
+            }
+            val bundle = (response as? TransportResult.Success)?.data as? android.os.Bundle ?: continue
+            @Suppress("DEPRECATION")
+            val items = bundle.getParcelableArrayList<android.os.Bundle>("items").orEmpty()
+            items.forEach { item ->
+                val name = item.getString("name") ?: return@forEach
+                val kind = runCatching {
+                    DynamicCapability.Kind.valueOf(item.getString("kind").orEmpty())
+                }.getOrNull() ?: return@forEach
+                result += DynamicCapability(name, kind, item.getIntArray("versions")?.toSet().orEmpty())
+            }
+        }
+        return result.sortedWith(compareBy({ it.kind.name }, { it.name }))
+    }
+
+    private suspend fun selectDynamicPeer(
+        kind: String,
+        name: String,
+        versions: Set<Int>
+    ): Pair<PeerConnection, Int>? {
+        val cacheKey = listOf(kind, name, versions.sorted().joinToString(",")).joinToString("#")
+        dynamicPeerCache[cacheKey]?.let { cached ->
+            if (peerManager?.getConnection(cached.peer.processName) != null) {
+                return cached.peer to cached.version
+            }
+            dynamicPeerCache.remove(cacheKey)
+        }
+        val selected = withTimeoutOrNull(config.timeout.connectMs) {
+        coroutineScope {
+            peerManager?.getAllConnections()?.values.orEmpty().map { peer ->
+                async {
+                    val probe = IpcEnvelope(
+                        serviceKey = DynamicProtocol.SERVICE_KEY,
+                        method = DynamicProtocol.PROBE,
+                        argsBundle = android.os.Bundle().apply {
+                            putString("kind", kind)
+                            putString("name", name)
+                            putIntArray("versions", versions.toIntArray())
+                        }
+                    )
+                    val response = withContext(threadPool.dispatcher) { peer.transport.invoke(probe) }
+                    val data = (response as? TransportResult.Success)?.data as? android.os.Bundle
+                    val version = data?.getInt("version", 0) ?: 0
+                    if (version > 0) peer to version else null
+                }
+            }.mapNotNull { it.await() }.maxByOrNull { it.second }
+        }
+        }
+        if (selected != null) dynamicPeerCache[cacheKey] = CachedDynamicPeer(selected.first, selected.second)
+        return selected
+    }
+
+    private fun registerDynamicDiscovery(kind: String, name: String) {
+        try {
+            context.contentResolver.insert(registryUri, android.content.ContentValues().apply {
+                put("service_key", "dynamic:$kind:$name")
+                put("process_name", ProcessUtils.getCurrentProcessName(context))
+                put("pkg_name", context.packageName)
+                put("register_time", System.currentTimeMillis())
+                put("pid", android.os.Process.myPid())
+            })
+        } catch (e: Exception) {
+            FalconLogger.w("Falcon", "Failed to advertise dynamic $kind $name: ${e.message}")
+        }
+    }
+
+    private fun dynamicCallEnvelope(
+        route: String,
+        version: Int,
+        requestId: String,
+        headers: DynamicPayload,
+        body: DynamicPayload
+    ) = IpcEnvelope(
+        serviceKey = DynamicProtocol.SERVICE_KEY,
+        method = DynamicProtocol.CALL,
+        requestId = requestId,
+        argsBundle = android.os.Bundle().apply {
+            putString("route", route)
+            putInt("version", version)
+            putBundle("headers", headers.toBundle())
+            putBundle("body", body.toBundle())
+        }
+    )
+
     fun stop() {
         peerManager?.stop()
         proxyCache.clear()
+        dynamicPeerCache.clear()
         rateLimiter.shutdown()
         signatureGuard.shutdown()
         diagnostics.disable()
@@ -282,6 +470,7 @@ class FalconManager internal constructor(
         FalconLogger.d("Falcon", "Shutting down (timeout=${timeoutMs}ms)...")
         peerManager?.stop()
         proxyCache.clear()
+        dynamicPeerCache.clear()
         rateLimiter.shutdown()
         signatureGuard.shutdown()
         diagnostics.disable()

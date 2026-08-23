@@ -12,22 +12,22 @@ data class MonitorConfig(
     var enableCallStats: Boolean = false,
     var enableTracing: Boolean = false,
     var enableLatencyHistogram: Boolean = false,
-    var statsWindowSeconds: Int = 60
+    var statsWindowSeconds: Int = 60,
+    var maxLatencySamplesPerMethod: Int = 10_000
 )
 
 class MonitorFacade {
-    private var level: MonitorLevel = MonitorLevel.NONE
     @Volatile private var config = MonitorConfig()
     // Per-key stats + per-key latency ring buffers for time-window calculation
     private val statsMap = ConcurrentHashMap<String, IpcCallStats>()
     private val latencyWindows = ConcurrentHashMap<String, ArrayDeque<Pair<Long, Long>>>() // (timestamp, latencyMs)
     private val _statsFlow = MutableStateFlow<List<IpcCallStats>>(emptyList())
     private val diagnostics = DiagnosticsManager()
+    private val traceActive = ThreadLocal<Boolean>()
 
     fun getDiagnostics(): DiagnosticsManager = diagnostics
 
     fun setLevel(level: MonitorLevel) {
-        this.level = level
         config = when (level) {
             MonitorLevel.NONE -> MonitorConfig(enableCallStats = false, enableTracing = false)
             MonitorLevel.BASIC -> MonitorConfig(enableCallStats = true, enableTracing = false)
@@ -37,8 +37,24 @@ class MonitorFacade {
     }
 
     fun setMonitorConfig(block: MonitorConfig.() -> Unit) {
-        config.apply(block)
+        config = config.copy().apply(block).also {
+            require(it.statsWindowSeconds >= 0)
+            require(it.maxLatencySamplesPerMethod > 0)
+        }
         FalconLogger.d("Monitor", "Config updated: stats=${config.enableCallStats} tracing=${config.enableTracing}")
+    }
+
+    fun beginTrace(service: String, method: String) {
+        if (!config.enableTracing) return
+        android.os.Trace.beginSection("Falcon:${service.substringAfterLast('.')}#$method".take(127))
+        traceActive.set(true)
+    }
+
+    fun endTrace() {
+        if (traceActive.get() == true) {
+            android.os.Trace.endSection()
+            traceActive.remove()
+        }
     }
 
     fun recordCall(service: String, method: String, success: Boolean, latencyMs: Long) {
@@ -61,7 +77,7 @@ class MonitorFacade {
 
         // Time-windowed latency tracking
         val windowMs = config.statsWindowSeconds * 1000L
-        if (windowMs > 0) {
+        if (config.enableLatencyHistogram && windowMs > 0) {
             val window = latencyWindows.getOrPut(key) { ArrayDeque() }
             synchronized(window) {
                 // Prune entries outside the window
@@ -70,10 +86,12 @@ class MonitorFacade {
                     window.removeFirst()
                 }
                 window.addLast(now to latencyMs)
+                while (window.size > config.maxLatencySamplesPerMethod) window.removeFirst()
             }
         }
 
-        _statsFlow.value = statsMap.values.toList()
+        // Avoid allocating/sorting a full snapshot on every call when nobody observes the Flow.
+        if (_statsFlow.subscriptionCount.value > 0) _statsFlow.value = snapshotStats()
 
         // Also record to diagnostics
         if (diagnostics.isEnabled()) {
@@ -98,7 +116,7 @@ class MonitorFacade {
         }
     }
 
-    fun getStats(): List<IpcCallStats> = statsMap.values.toList()
+    fun getStats(): List<IpcCallStats> = snapshotStats()
 
     fun statsFlow(): Flow<List<IpcCallStats>> = _statsFlow.asStateFlow()
 
@@ -111,4 +129,8 @@ class MonitorFacade {
         latencyWindows.clear()
         _statsFlow.value = emptyList()
     }
+
+    private fun snapshotStats(): List<IpcCallStats> = statsMap.values.map { stats ->
+        synchronized(stats) { stats.copy() }
+    }.sortedWith(compareBy({ it.serviceName }, { it.methodName }))
 }

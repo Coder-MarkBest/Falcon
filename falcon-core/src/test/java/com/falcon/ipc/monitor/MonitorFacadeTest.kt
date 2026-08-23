@@ -68,4 +68,26 @@ class MonitorFacadeTest {
         val stats = monitor.getStats()
         assertEquals(3, stats.size)
     }
+
+    @Test
+    fun `returned stats are immutable snapshots`() {
+        monitor.setLevel(MonitorLevel.BASIC)
+        monitor.recordCall("svc", "method", true, 10)
+        val first = monitor.getStats()
+        monitor.recordCall("svc", "method", true, 20)
+
+        assertEquals(1L, first.single().callCount)
+        assertEquals(2L, monitor.getStats().single().callCount)
+    }
+
+    @Test
+    fun `latency window has a bounded sample count`() {
+        monitor.setLevel(MonitorLevel.DETAILED)
+        monitor.setMonitorConfig { maxLatencySamplesPerMethod = 2 }
+        monitor.recordCall("svc", "method", true, 10)
+        monitor.recordCall("svc", "method", true, 20)
+        monitor.recordCall("svc", "method", true, 30)
+
+        assertEquals(25.0, monitor.getWindowedAvgLatencyMs("svc#method"), 0.01)
+    }
 }
