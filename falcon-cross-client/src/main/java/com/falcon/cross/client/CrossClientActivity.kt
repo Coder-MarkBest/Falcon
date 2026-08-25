@@ -12,6 +12,7 @@ import com.falcon.cross.shared.ICrossService
 import com.falcon.cross.shared.VehicleData
 import com.falcon.ipc.Falcon
 import com.falcon.ipc.core.IpcState
+import com.falcon.ipc.dynamic.DynamicPayload
 import com.falcon.ipc.getServiceSuspending
 import com.falcon.ipc.protocol.IpcResult
 import com.falcon.ipc.runtime.callSafe
@@ -42,6 +43,7 @@ class CrossClientActivity : AppCompatActivity() {
     private val buttons = mutableListOf<Button>()
     private var telemetryJob: Job? = null
     private var speedAlertsJob: Job? = null
+    private var dynamicTelemetryJob: Job? = null
 
     @Volatile private var service: ICrossService? = null
     private val timeFmt = SimpleDateFormat("HH:mm:ss.SSS", Locale.US)
@@ -90,6 +92,9 @@ class CrossClientActivity : AppCompatActivity() {
         addButton("16 ▸ @IpcCallback validateVehicle() [error]")   { demoValidateVehicle() }
         addButton("17 ▸ ⏱ Benchmark cross-app latency")            { demoBenchmark() }
         addButton("18 ▸ 💥 Stress test (concurrent load)")          { demoStress() }
+        addButton("19 ▸ Dynamic route vehicle/status/get")         { demoDynamicRoute() }
+        addButton("20 ▸ Dynamic topic vehicle/telemetry ▶ start/stop") { demoDynamicTopicToggle() }
+        addButton("21 ▸ Dynamic capabilities")                     { demoDynamicCapabilities() }
         addButton("✕ clear log") { log.text = "" }
 
         log = TextView(this).apply {
@@ -389,9 +394,53 @@ class CrossClientActivity : AppCompatActivity() {
         else appendLog("   ✗ ${errors.get()} calls failed — see logcat")
     }
 
+    // Dynamic RPC has no shared interface or Parcelable model. Route names and
+    // platform-typed payload fields form the wire contract, similar to HTTP/JSON.
+    private fun demoDynamicRoute() = lifecycleScope.launch(Dispatchers.IO) {
+        runCatching {
+            Falcon.getInstance().call(
+                route = "vehicle/status/get",
+                supportedVersions = setOf(1, 2),
+                body = DynamicPayload.build { putString("vin", "VIN-DYNAMIC-001") }
+            )
+        }.onSuccess { response ->
+            appendLog("dynamic status=${response.statusCode} vin=${response.body.getString("vin")}")
+            appendLog("  speed=${response.body.getInt("speedKmh")} version=${response.body.getInt("protocolVersion")}")
+            appendLog("  server=${response.body.getString("serverProcess")}")
+        }.onFailure { appendLog("dynamic route error: ${it.message}") }
+    }
+
+    private fun demoDynamicTopicToggle() {
+        if (dynamicTelemetryJob?.isActive == true) {
+            dynamicTelemetryJob?.cancel()
+            dynamicTelemetryJob = null
+            appendLog("dynamic vehicle/telemetry unsubscribed")
+            return
+        }
+        appendLog("dynamic vehicle/telemetry subscribed")
+        dynamicTelemetryJob = lifecycleScope.launch(Dispatchers.IO) {
+            Falcon.getInstance().subscribe("vehicle/telemetry")
+                .take(6)
+                .catch { appendLog("dynamic topic error: ${it.message}") }
+                .collect { payload ->
+                    appendLog("  dynamic telemetry #${payload.getLong("sequence")}: ${payload.getInt("speedKmh")}km/h")
+                }
+            appendLog("dynamic vehicle/telemetry done (take 6)")
+        }
+    }
+
+    private fun demoDynamicCapabilities() = lifecycleScope.launch(Dispatchers.IO) {
+        runCatching { Falcon.getInstance().dynamicCapabilities() }
+            .onSuccess { capabilities ->
+                capabilities.forEach { appendLog("dynamic ${it.kind}: ${it.name} versions=${it.versions.sorted()}") }
+            }
+            .onFailure { appendLog("dynamic capabilities error: ${it.message}") }
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         telemetryJob?.cancel()
         speedAlertsJob?.cancel()
+        dynamicTelemetryJob?.cancel()
     }
 }

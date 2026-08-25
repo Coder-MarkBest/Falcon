@@ -1,7 +1,11 @@
 package com.falcon.cross.client
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.falcon.cross.shared.CrossData
+import com.falcon.cross.shared.ICrossService
 import com.falcon.ipc.Falcon
+import com.falcon.ipc.dynamic.DynamicCapability
+import com.falcon.ipc.dynamic.DynamicPayload
 import com.falcon.ipc.getServiceSuspending
 import com.falcon.ipc.service.IpcReply
 import kotlinx.coroutines.flow.take
@@ -115,5 +119,45 @@ class CrossAppTest {
         val first = Falcon.getInstance().getServiceSuspending<ICrossService>()
         val second = Falcon.getInstance().getServiceSuspending<ICrossService>()
         assertTrue("cross-app proxy is cached", first === second)
+    }
+
+    // ── Dynamic RPC (no shared interface/model) ────────────────────────────
+
+    @Test fun cross_dynamic_route_negotiates_highest_version() = runBlocking {
+        val response = withTimeout(15_000) {
+            Falcon.getInstance().call(
+                route = "vehicle/status/get",
+                supportedVersions = setOf(1, 2, 3),
+                body = DynamicPayload.build { putString("vin", "VIN-DYNAMIC-TEST") }
+            )
+        }
+        assertTrue(response.isSuccessful)
+        assertEquals("VIN-DYNAMIC-TEST", response.body.getString("vin"))
+        assertEquals(88, response.body.getInt("speedKmh"))
+        assertEquals(2, response.body.getInt("protocolVersion"))
+        assertTrue(response.body.getString("serverProcess")?.endsWith(":server") == true)
+    }
+
+    @Test fun cross_dynamic_topic_streams_platform_payloads() = runBlocking {
+        val events = withTimeout(15_000) {
+            Falcon.getInstance().subscribe("vehicle/telemetry").take(3).toList()
+        }
+        assertEquals(3, events.size)
+        assertTrue(events.zipWithNext().all { (first, second) ->
+            second.getLong("sequence") > first.getLong("sequence")
+        })
+        assertTrue(events.all { it.getBoolean("ignitionOn") })
+    }
+
+    @Test fun cross_dynamic_capabilities_are_discoverable() = runBlocking {
+        val capabilities = withTimeout(15_000) { Falcon.getInstance().dynamicCapabilities() }
+        assertTrue(capabilities.any {
+            it.kind == DynamicCapability.Kind.ROUTE &&
+                it.name == "vehicle/status/get" && it.versions == setOf(1, 2)
+        })
+        assertTrue(capabilities.any {
+            it.kind == DynamicCapability.Kind.TOPIC &&
+                it.name == "vehicle/telemetry" && it.versions == setOf(1)
+        })
     }
 }

@@ -4,9 +4,18 @@ import android.app.Application
 import android.util.Log
 import com.falcon.cross.shared.ICrossService
 import com.falcon.ipc.Falcon
+import com.falcon.ipc.dynamic.DynamicPayload
+import com.falcon.ipc.dynamic.DynamicResponse
 import com.falcon.ipc.generated.SharedFalconGeneratedRegistry
 import com.falcon.ipc.register
 import com.falcon.ipc.util.ProcessUtils
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 
 /**
  * Headless server APK — simulates a vehicle data gateway signed by the
@@ -23,6 +32,8 @@ import com.falcon.ipc.util.ProcessUtils
  */
 class CrossServerApp : Application() {
 
+    private val dynamicScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
     companion object {
         /** SHA-256 fingerprint of cross-client.keystore (alias=cross-client),
          *  normalized to lowercase hex without colons (matching SignatureGuard format). */
@@ -32,8 +43,9 @@ class CrossServerApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        Log.i("CrossServer", "onCreate in ${ProcessUtils.getCurrentProcessName(this)}")
-        Falcon.init(this) {
+        val processName = ProcessUtils.getCurrentProcessName(this)
+        Log.i("CrossServer", "onCreate in $processName")
+        val falcon = Falcon.init(this) {
             generated(SharedFalconGeneratedRegistry)
             security {
                 signatureVerification = true
@@ -42,7 +54,47 @@ class CrossServerApp : Application() {
                 maxConcurrentCalls = 0       // demo: unlimited
             }
             transport { binderPoolSize = 4; maxBinderPayloadSize = 256 * 1024 }
-        }.register(ICrossService::class, CrossServiceImpl())
-        Log.i("CrossServer", "ICrossService registered — trusted clients: 1")
+        }
+        falcon.register(ICrossService::class, CrossServiceImpl())
+
+        // Dynamic RPC uses only platform wire types. Client and server do not share
+        // an interface or model class for these routes and topics.
+        for (version in 1..2) {
+            falcon.route("vehicle/status/get", version) { request ->
+                val vin = request.body.getString("vin").orEmpty()
+                if (vin.isBlank()) {
+                    DynamicResponse.error(400, "vin is required")
+                } else {
+                    DynamicResponse.success(DynamicPayload.build {
+                        putString("vin", vin)
+                        putInt("speedKmh", 88)
+                        putBoolean("ignitionOn", true)
+                        putInt("protocolVersion", request.version)
+                        putString("serverProcess", processName)
+                    })
+                }
+            }
+        }
+        falcon.topic("vehicle/telemetry", version = 1)
+
+        if (processName.endsWith(":server")) {
+            dynamicScope.launch {
+                var sequence = 0L
+                while (isActive) {
+                    delay(500)
+                    falcon.publish("vehicle/telemetry", DynamicPayload.build {
+                        putLong("sequence", ++sequence)
+                        putInt("speedKmh", 60 + (sequence % 40).toInt())
+                        putBoolean("ignitionOn", true)
+                    })
+                }
+            }
+        }
+        Log.i("CrossServer", "Typed service and Dynamic RPC registered — trusted clients: 1")
+    }
+
+    override fun onTerminate() {
+        dynamicScope.cancel()
+        super.onTerminate()
     }
 }

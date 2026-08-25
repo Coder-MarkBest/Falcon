@@ -251,8 +251,10 @@ the build does not produce numbers.
 ## Demos & docs
 
 - **Cross-app demo** — `falcon-cross-server` + `falcon-cross-client`: two independently-signed
-  APKs with mutual certificate trust, exercising all 16 IPC patterns, a latency benchmark, and
-  a concurrent stress test. Simulates a multi-vendor automotive system.
+  APKs with mutual certificate trust. It exercises every typed RPC shape plus Dynamic routes,
+  topics, capability discovery, and version negotiation without a shared interface/model. It also
+  includes a latency benchmark and concurrent stress test. The apps consume the published Falcon
+  `1.0.0` JitPack artifacts instead of local library projects.
 - **Integration guide** — [docs/USAGE.md](docs/USAGE.md).
 - **Design spec** — [docs/superpowers/specs](docs/superpowers/specs).
 
@@ -263,11 +265,17 @@ the build does not produce numbers.
 ./gradlew :falcon-core:testDebugUnitTest     # core unit tests
 ./gradlew :falcon-cross-server:testDebugUnitTest   # JVM round-trip over generated code
 ./gradlew :falcon-cross-server:assembleDebug :falcon-cross-client:assembleDebug
+
+# Real two-APK Binder test (requires a running emulator/device)
+adb install -r falcon-cross-server/build/outputs/apk/debug/falcon-cross-server-debug.apk
+./gradlew :falcon-cross-client:connectedDebugAndroidTest
 ```
 
 The cross-app demo keystores are committed (demo-only, password `falcondemo`) so the demo
 builds and runs out of the box; their certificate fingerprints already match the trusted-signature
-allow-lists in the demo apps.
+allow-lists in the demo apps. Client buttons 19-21 run the Dynamic route, topic, and capabilities
+demos; matching instrumentation tests verify the real cross-APK Binder path and highest compatible
+version negotiation.
 
 ## Roadmap
 

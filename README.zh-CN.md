@@ -256,7 +256,9 @@ Broadcast 横向对比（同 App 内）。任何 benchmark 都需在真机/模�
 ## 示例与文档
 
 - **跨 App 示例** —— `falcon-cross-server` + `falcon-cross-client`：两个独立签名、互相信任证书的
-  APK，演示全部 16 种 IPC 模式、延迟 benchmark 和并发压力测试，模拟多供应商车载系统。
+  APK，演示强类型 RPC 的全部调用模式，以及无需共享接口/模型的 Dynamic route、topic、能力发现
+  和版本协商；同时包含延迟 benchmark 和并发压力测试，模拟多供应商车载系统。示例依赖 JitPack
+  发布的 Falcon `1.0.0`，而不是仓库内的本地 library project。
 - **集成指南** —— [docs/USAGE.md](docs/USAGE.md)。
 - **生产准入** —— [docs/PRODUCTION.md](docs/PRODUCTION.md)。
 - **设计文档** —— [docs/superpowers/specs](docs/superpowers/specs)。
@@ -268,10 +270,15 @@ Broadcast 横向对比（同 App 内）。任何 benchmark 都需在真机/模�
 ./gradlew :falcon-core:testDebugUnitTest     # core 单元测试
 ./gradlew :falcon-cross-server:testDebugUnitTest   # 走生成代码的 JVM 往返测试
 ./gradlew :falcon-cross-server:assembleDebug :falcon-cross-client:assembleDebug
+
+# 真实双 APK Binder 测试（需要已启动的模拟器/真机）
+adb install -r falcon-cross-server/build/outputs/apk/debug/falcon-cross-server-debug.apk
+./gradlew :falcon-cross-client:connectedDebugAndroidTest
 ```
 
 跨 App 示例的 keystore 已入库（仅供 demo，密码 `falcondemo`），因此示例开箱即可构建运行；
-其证书指纹已与示例 App 里的可信签名白名单一致。
+其证书指纹已与示例 App 里的可信签名白名单一致。客户端按钮 19-21 分别运行 Dynamic route、
+Dynamic topic 和 capabilities 示例；对应仪器测试验证真实跨 APK Binder 链路和最高兼容版本协商。
 
 ## 路线图
 
