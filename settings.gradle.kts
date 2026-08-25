@@ -3,6 +3,12 @@ pluginManagement {
         google()
         mavenCentral()
         gradlePluginPortal()
+        maven("https://jitpack.io")
+    }
+    resolutionStrategy.eachPlugin {
+        if (requested.id.id == "com.falcon.ipc.falcon-gradle") {
+            useModule("com.github.Coder-MarkBest.Falcon:falcon-gradle-plugin:${requested.version}")
+        }
     }
 }
 
