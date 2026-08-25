@@ -46,6 +46,36 @@ Typed RPC 的复合数据类型必须实现 `Parcelable`。Dynamic RPC 禁止业
 
 ## 2. Gradle 配置
 
+### `settings.gradle.kts`（仓库和插件解析）
+
+Falcon Gradle 插件使用 JitPack 的模块坐标，因此需要显式映射插件 ID：
+
+```kotlin
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+        maven("https://jitpack.io")
+    }
+    resolutionStrategy.eachPlugin {
+        if (requested.id.id == "com.falcon.ipc.falcon-gradle") {
+            useModule("com.github.Coder-MarkBest.Falcon:falcon-gradle-plugin:${requested.version}")
+        }
+    }
+}
+
+dependencyResolutionManagement {
+    repositories {
+        google()
+        mavenCentral()
+        maven("https://jitpack.io")
+    }
+}
+```
+
+以下示例使用版本 `1.0.0`。生产项目应固定正式版本，不要使用 `main-SNAPSHOT`。
+
 ### 根 `build.gradle.kts`（plugins 声明）
 
 ```kotlin
@@ -53,6 +83,7 @@ plugins {
     id("com.android.application") version "8.2.0" apply false
     id("org.jetbrains.kotlin.android") version "1.9.22" apply false
     id("com.google.devtools.ksp") version "1.9.22-1.0.17" apply false
+    id("com.falcon.ipc.falcon-gradle") version "1.0.0" apply false
 }
 ```
 
@@ -63,6 +94,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("com.google.devtools.ksp")          // ① KSP 代码生成
+    id("com.falcon.ipc.falcon-gradle")     // 跨 App 包可见性
 }
 
 android {
@@ -79,13 +111,14 @@ android {
 }
 
 dependencies {
-    implementation(project(":falcon-core")) // 或发布后的 maven 坐标
-    ksp(project(":falcon-ksp"))             // ③ 注册 KSP 处理器
+    implementation("com.github.Coder-MarkBest.Falcon:falcon-core:1.0.0")
+    ksp("com.github.Coder-MarkBest.Falcon:falcon-ksp:1.0.0") // ③ 注册 KSP 处理器
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
 }
 ```
 
 三个要点：① 应用 KSP 插件，② 打开 `aidl`，③ 用 `ksp(...)` 引入处理器（不是 `implementation`）。
+同仓库源码开发时可将 Maven 坐标替换为 `project(":falcon-core")` 和 `project(":falcon-ksp")`。
 
 ### Dynamic-RPC-only 客户端
 

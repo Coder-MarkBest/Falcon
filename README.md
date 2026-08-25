@@ -72,6 +72,20 @@ Falcon is distributed via [JitPack](https://jitpack.io/#Coder-MarkBest/Falcon).
 **1. Add the JitPack repository** (`settings.gradle.kts`):
 
 ```kotlin
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+        maven("https://jitpack.io")
+    }
+    resolutionStrategy.eachPlugin {
+        if (requested.id.id == "com.falcon.ipc.falcon-gradle") {
+            useModule("com.github.Coder-MarkBest.Falcon:falcon-gradle-plugin:${requested.version}")
+        }
+    }
+}
+
 dependencyResolutionManagement {
     repositories {
         google()
@@ -86,6 +100,7 @@ dependencyResolutionManagement {
 ```kotlin
 plugins {
     id("com.google.devtools.ksp") version "1.9.22-1.0.17" // match your Kotlin version
+    id("com.falcon.ipc.falcon-gradle") version "1.0.0"     // recommended for cross-app IPC
 }
 
 dependencies {
@@ -97,6 +112,7 @@ dependencies {
 
 > The KSP plugin version must track your project's Kotlin version (`<kotlin>-<ksp>`).
 > A Dynamic-RPC-only client needs only `falcon-core`; omit the KSP plugin and `falcon-ksp` dependency.
+> See the [integration guide](docs/USAGE.md) for initialization, manifest, security, and production checks.
 
 ## Quickstart
 

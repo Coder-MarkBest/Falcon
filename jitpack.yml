@@ -1,5 +1,5 @@
-# JitPack build config — publishes only the three consumable library modules
-# (falcon-annotations, falcon-core, falcon-ksp). The demo/benchmark app modules
+# JitPack build config — publishes the consumable library and Gradle plugin modules.
+# The demo/benchmark app modules
 # are intentionally excluded: they need signing keystores and AGP packaging that
 # JitPack neither needs nor should run to produce the library artifacts.
 jdk:
@@ -9,4 +9,5 @@ install:
       :falcon-annotations:publishToMavenLocal
       :falcon-core:publishToMavenLocal
       :falcon-ksp:publishToMavenLocal
+      :falcon-gradle-plugin:publishToMavenLocal
       -x lint

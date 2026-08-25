@@ -71,6 +71,20 @@ Falcon 通过 [JitPack](https://jitpack.io/#Coder-MarkBest/Falcon) 分发。
 **1. 添加 JitPack 仓库**（`settings.gradle.kts`）：
 
 ```kotlin
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+        maven("https://jitpack.io")
+    }
+    resolutionStrategy.eachPlugin {
+        if (requested.id.id == "com.falcon.ipc.falcon-gradle") {
+            useModule("com.github.Coder-MarkBest.Falcon:falcon-gradle-plugin:${requested.version}")
+        }
+    }
+}
+
 dependencyResolutionManagement {
     repositories {
         google()
@@ -85,6 +99,7 @@ dependencyResolutionManagement {
 ```kotlin
 plugins {
     id("com.google.devtools.ksp") version "1.9.22-1.0.17" // 与你的 Kotlin 版本匹配
+    id("com.falcon.ipc.falcon-gradle") version "1.0.0"     // 跨 App 时推荐
 }
 
 dependencies {
@@ -96,6 +111,7 @@ dependencies {
 
 > KSP 插件版本必须跟随项目的 Kotlin 版本（`<kotlin>-<ksp>`）。
 > 只使用 Dynamic RPC 的客户端仅需依赖 `falcon-core`，无需应用 KSP 插件或引入 `falcon-ksp`。
+> 完整的初始化、Manifest、安全配置和生产验收流程见 [接入指南](docs/USAGE.md)。
 
 ## 快速开始
 
