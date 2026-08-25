@@ -100,12 +100,12 @@ dependencyResolutionManagement {
 ```kotlin
 plugins {
     id("com.google.devtools.ksp") version "1.9.22-1.0.17" // match your Kotlin version
-    id("com.falcon.ipc.falcon-gradle") version "1.0.0"     // recommended for cross-app IPC
+    id("com.falcon.ipc.falcon-gradle") version "1.0.1"     // recommended for cross-app IPC
 }
 
 dependencies {
-    implementation("com.github.Coder-MarkBest.Falcon:falcon-core:1.0.0")
-    ksp("com.github.Coder-MarkBest.Falcon:falcon-ksp:1.0.0")
+    implementation("com.github.Coder-MarkBest.Falcon:falcon-core:1.0.1")
+    ksp("com.github.Coder-MarkBest.Falcon:falcon-ksp:1.0.1")
     // falcon-annotations comes transitively via falcon-core
 }
 ```

@@ -10,5 +10,5 @@ plugins {
 // com.github.<user>.<repo>; this default keeps `publishToMavenLocal` usable too.
 allprojects {
     group = "com.github.Coder-MarkBest.Falcon"
-    version = "1.0.0"
+    version = "1.0.1"
 }

@@ -74,7 +74,7 @@ dependencyResolutionManagement {
 }
 ```
 
-以下示例使用版本 `1.0.0`。生产项目应固定正式版本，不要使用 `main-SNAPSHOT`。
+以下示例使用版本 `1.0.1`。生产项目应固定正式版本，不要使用 `main-SNAPSHOT`。
 
 ### 根 `build.gradle.kts`（plugins 声明）
 
@@ -83,7 +83,7 @@ plugins {
     id("com.android.application") version "8.2.0" apply false
     id("org.jetbrains.kotlin.android") version "1.9.22" apply false
     id("com.google.devtools.ksp") version "1.9.22-1.0.17" apply false
-    id("com.falcon.ipc.falcon-gradle") version "1.0.0" apply false
+    id("com.falcon.ipc.falcon-gradle") version "1.0.1" apply false
 }
 ```
 
@@ -111,8 +111,8 @@ android {
 }
 
 dependencies {
-    implementation("com.github.Coder-MarkBest.Falcon:falcon-core:1.0.0")
-    ksp("com.github.Coder-MarkBest.Falcon:falcon-ksp:1.0.0") // ③ 注册 KSP 处理器
+    implementation("com.github.Coder-MarkBest.Falcon:falcon-core:1.0.1")
+    ksp("com.github.Coder-MarkBest.Falcon:falcon-ksp:1.0.1") // ③ 注册 KSP 处理器
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
 }
 ```
@@ -131,7 +131,7 @@ plugins {
 }
 
 dependencies {
-    implementation("com.github.Coder-MarkBest.Falcon:falcon-core:1.0.0")
+    implementation("com.github.Coder-MarkBest.Falcon:falcon-core:1.0.1")
 }
 ```
 

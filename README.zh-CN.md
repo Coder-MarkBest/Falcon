@@ -99,12 +99,12 @@ dependencyResolutionManagement {
 ```kotlin
 plugins {
     id("com.google.devtools.ksp") version "1.9.22-1.0.17" // 与你的 Kotlin 版本匹配
-    id("com.falcon.ipc.falcon-gradle") version "1.0.0"     // 跨 App 时推荐
+    id("com.falcon.ipc.falcon-gradle") version "1.0.1"     // 跨 App 时推荐
 }
 
 dependencies {
-    implementation("com.github.Coder-MarkBest.Falcon:falcon-core:1.0.0")
-    ksp("com.github.Coder-MarkBest.Falcon:falcon-ksp:1.0.0")
+    implementation("com.github.Coder-MarkBest.Falcon:falcon-core:1.0.1")
+    ksp("com.github.Coder-MarkBest.Falcon:falcon-ksp:1.0.1")
     // falcon-annotations 通过 falcon-core 传递依赖自动带入
 }
 ```
