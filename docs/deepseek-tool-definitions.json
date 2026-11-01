@@ -1,0 +1,240 @@
+[
+  {
+    "type": "function",
+    "function": {
+      "name": "profile_resolve_place",
+      "description": "解析当前授权用户已保存的家；不存在时应追问，不猜测地址。\nMCP outputSchema: {\"type\":\"object\",\"description\":\"Structured result\",\"properties\":{\"destinationRef\":{\"type\":\"string\",\"description\":\"当前用户的目的地引用\",\"maxLength\":256},\"displayName\":{\"type\":\"string\",\"description\":\"目的地显示名称\",\"maxLength\":256}},\"required\":[\"destinationRef\",\"displayName\"],\"additionalProperties\":false}\nMCP annotations: {\"readOnlyHint\":true,\"destructiveHint\":false,\"idempotentHint\":true,\"openWorldHint\":false}",
+      "parameters": {
+        "type": "object",
+        "description": "Structured result",
+        "properties": {
+          "label": {
+            "type": "string",
+            "description": "已保存地点标签",
+            "enum": [
+              "home"
+            ],
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "label"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "navigation_plan_route",
+      "description": "规划到目的地的路线，不启动导航。\nMCP outputSchema: {\"type\":\"object\",\"description\":\"Structured result\",\"properties\":{\"routeId\":{\"type\":\"string\",\"description\":\"路线引用\",\"maxLength\":256},\"durationSeconds\":{\"type\":\"integer\",\"description\":\"预计时长秒\",\"minimum\":0.0},\"distanceMeters\":{\"type\":\"integer\",\"description\":\"距离米\",\"minimum\":0.0},\"expiresAt\":{\"type\":\"integer\",\"description\":\"有效期Unix毫秒\",\"minimum\":0.0}},\"required\":[\"routeId\",\"durationSeconds\",\"distanceMeters\",\"expiresAt\"],\"additionalProperties\":false}\nMCP annotations: {\"readOnlyHint\":true,\"destructiveHint\":false,\"idempotentHint\":true,\"openWorldHint\":false}",
+      "parameters": {
+        "type": "object",
+        "description": "Structured result",
+        "properties": {
+          "destinationRef": {
+            "type": "string",
+            "description": "由profile_resolve_place获得的引用",
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "destinationRef"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "navigation_start",
+      "description": "启动有效路线；超时后先查询操作，不能盲目重发。\nMCP outputSchema: {\"type\":\"object\",\"description\":\"Structured result\",\"properties\":{\"operationRef\":{\"type\":\"string\",\"description\":\"操作引用\",\"maxLength\":256},\"status\":{\"type\":\"string\",\"description\":\"accepted仅表示接受，succeeded表示已确认生效\",\"enum\":[\"accepted\",\"succeeded\"],\"maxLength\":256},\"navigationSessionId\":{\"type\":\"string\",\"description\":\"导航会话\",\"maxLength\":256}},\"required\":[\"operationRef\",\"status\",\"navigationSessionId\"],\"additionalProperties\":false}\nMCP annotations: {\"readOnlyHint\":false,\"destructiveHint\":false,\"idempotentHint\":false,\"openWorldHint\":false}",
+      "parameters": {
+        "type": "object",
+        "description": "Structured result",
+        "properties": {
+          "routeId": {
+            "type": "string",
+            "description": "规划得到的路线引用",
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "routeId"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "navigation_get_state",
+      "description": "查询实际导航状态。\nMCP outputSchema: {\"type\":\"object\",\"description\":\"Structured result\",\"properties\":{\"status\":{\"type\":\"string\",\"description\":\"导航状态\",\"enum\":[\"idle\",\"active\"],\"maxLength\":256},\"routeId\":{\"type\":\"string\",\"description\":\"当前路线\",\"maxLength\":256},\"navigationSessionId\":{\"type\":\"string\",\"description\":\"导航会话\",\"maxLength\":256}},\"required\":[\"status\"],\"additionalProperties\":false}\nMCP annotations: {\"readOnlyHint\":true,\"destructiveHint\":false,\"idempotentHint\":true,\"openWorldHint\":false}",
+      "parameters": {
+        "type": "object",
+        "description": "Structured result",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "climate_get_state",
+      "description": "读取指定区域的目标温度、范围、步长和版本。\nMCP outputSchema: {\"type\":\"object\",\"description\":\"Structured result\",\"properties\":{\"zone\":{\"type\":\"string\",\"description\":\"座位区域，必须在会话授权范围内\",\"enum\":[\"driver\",\"front_passenger\"],\"maxLength\":256},\"targetTemperatureC\":{\"type\":\"number\",\"description\":\"设定温度摄氏度\"},\"minC\":{\"type\":\"number\",\"description\":\"最低目标温度\"},\"maxC\":{\"type\":\"number\",\"description\":\"最高目标温度\"},\"stepC\":{\"type\":\"number\",\"description\":\"温度步长\",\"minimum\":0.1},\"stateVersion\":{\"type\":\"integer\",\"description\":\"并发控制版本\",\"minimum\":0.0},\"observedAt\":{\"type\":\"integer\",\"description\":\"观测时间Unix毫秒\",\"minimum\":0.0}},\"required\":[\"zone\",\"targetTemperatureC\",\"minC\",\"maxC\",\"stepC\",\"stateVersion\",\"observedAt\"],\"additionalProperties\":false}\nMCP annotations: {\"readOnlyHint\":true,\"destructiveHint\":false,\"idempotentHint\":true,\"openWorldHint\":false}",
+      "parameters": {
+        "type": "object",
+        "description": "Structured result",
+        "properties": {
+          "zone": {
+            "type": "string",
+            "description": "座位区域，必须在会话授权范围内",
+            "enum": [
+              "driver",
+              "front_passenger"
+            ],
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "zone"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "climate_set_temperature",
+      "description": "设置空调目标温度，必须先读取状态。设置成功不代表车内已达到该温度。\nMCP outputSchema: {\"type\":\"object\",\"description\":\"Structured result\",\"properties\":{\"operationRef\":{\"type\":\"string\",\"description\":\"操作引用\",\"maxLength\":256},\"status\":{\"type\":\"string\",\"description\":\"accepted仅表示接受，succeeded表示已确认生效\",\"enum\":[\"accepted\",\"succeeded\"],\"maxLength\":256},\"zone\":{\"type\":\"string\",\"description\":\"座位区域，必须在会话授权范围内\",\"enum\":[\"driver\",\"front_passenger\"],\"maxLength\":256},\"targetTemperatureC\":{\"type\":\"number\",\"description\":\"实际设定温度\"},\"stateVersion\":{\"type\":\"integer\",\"description\":\"新状态版本\",\"minimum\":0.0}},\"required\":[\"operationRef\",\"status\",\"zone\",\"targetTemperatureC\",\"stateVersion\"],\"additionalProperties\":false}\nMCP annotations: {\"readOnlyHint\":false,\"destructiveHint\":false,\"idempotentHint\":true,\"openWorldHint\":false}",
+      "parameters": {
+        "type": "object",
+        "description": "Structured result",
+        "properties": {
+          "zone": {
+            "type": "string",
+            "description": "座位区域，必须在会话授权范围内",
+            "enum": [
+              "driver",
+              "front_passenger"
+            ],
+            "maxLength": 256
+          },
+          "targetTemperatureC": {
+            "type": "number",
+            "description": "目标温度摄氏度",
+            "minimum": 16.0,
+            "maximum": 30.0
+          },
+          "expectedStateVersion": {
+            "type": "integer",
+            "description": "读取时的状态版本",
+            "minimum": 0.0
+          }
+        },
+        "required": [
+          "zone",
+          "targetTemperatureC",
+          "expectedStateVersion"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "media_search",
+      "description": "搜索轻松音乐；不购买、不订阅。只使用返回的可播放引用。\nMCP outputSchema: {\"type\":\"object\",\"description\":\"Structured result\",\"properties\":{\"items\":{\"type\":\"array\",\"description\":\"候选内容\",\"maxItems\":5,\"items\":{\"type\":\"object\",\"description\":\"Structured result\",\"properties\":{\"contentRef\":{\"type\":\"string\",\"description\":\"内容引用\",\"maxLength\":256},\"title\":{\"type\":\"string\",\"description\":\"标题\",\"maxLength\":256},\"playable\":{\"type\":\"boolean\",\"description\":\"可以直接播放\"},\"requiresPurchase\":{\"type\":\"boolean\",\"description\":\"需要购买\"}},\"required\":[\"contentRef\",\"title\",\"playable\",\"requiresPurchase\"],\"additionalProperties\":false}}},\"required\":[\"items\"],\"additionalProperties\":false}\nMCP annotations: {\"readOnlyHint\":true,\"destructiveHint\":false,\"idempotentHint\":true,\"openWorldHint\":false}",
+      "parameters": {
+        "type": "object",
+        "description": "Structured result",
+        "properties": {
+          "mood": {
+            "type": "string",
+            "description": "音乐情绪",
+            "enum": [
+              "relaxing"
+            ],
+            "maxLength": 256
+          },
+          "limit": {
+            "type": "integer",
+            "description": "候选数量",
+            "minimum": 1.0,
+            "maximum": 5.0
+          }
+        },
+        "required": [
+          "mood",
+          "limit"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "media_play",
+      "description": "播放搜索返回的可播放内容，保留现有音量。\nMCP outputSchema: {\"type\":\"object\",\"description\":\"Structured result\",\"properties\":{\"operationRef\":{\"type\":\"string\",\"description\":\"操作引用\",\"maxLength\":256},\"status\":{\"type\":\"string\",\"description\":\"accepted仅表示接受，succeeded表示已确认生效\",\"enum\":[\"accepted\",\"succeeded\"],\"maxLength\":256},\"playbackSessionId\":{\"type\":\"string\",\"description\":\"播放会话\",\"maxLength\":256}},\"required\":[\"operationRef\",\"status\",\"playbackSessionId\"],\"additionalProperties\":false}\nMCP annotations: {\"readOnlyHint\":false,\"destructiveHint\":false,\"idempotentHint\":false,\"openWorldHint\":false}",
+      "parameters": {
+        "type": "object",
+        "description": "Structured result",
+        "properties": {
+          "contentRef": {
+            "type": "string",
+            "description": "搜索返回的内容引用",
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "contentRef"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "media_get_state",
+      "description": "读取实际播放状态。\nMCP outputSchema: {\"type\":\"object\",\"description\":\"Structured result\",\"properties\":{\"status\":{\"type\":\"string\",\"description\":\"播放状态\",\"enum\":[\"idle\",\"playing\"],\"maxLength\":256},\"contentRef\":{\"type\":\"string\",\"description\":\"当前内容\",\"maxLength\":256},\"playbackSessionId\":{\"type\":\"string\",\"description\":\"播放会话\",\"maxLength\":256}},\"required\":[\"status\"],\"additionalProperties\":false}\nMCP annotations: {\"readOnlyHint\":true,\"destructiveHint\":false,\"idempotentHint\":true,\"openWorldHint\":false}",
+      "parameters": {
+        "type": "object",
+        "description": "Structured result",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "operation_get",
+      "description": "按操作引用查询执行结果。未知结果不能当作失败重试。\nMCP outputSchema: {\"type\":\"object\",\"description\":\"Structured result\",\"properties\":{\"operationRef\":{\"type\":\"string\",\"description\":\"操作引用\",\"maxLength\":256},\"status\":{\"type\":\"string\",\"description\":\"执行状态\",\"enum\":[\"pending\",\"running\",\"succeeded\",\"failed\",\"cancelled\",\"unknown\"],\"maxLength\":256}},\"required\":[\"operationRef\",\"status\"],\"additionalProperties\":false}\nMCP annotations: {\"readOnlyHint\":true,\"destructiveHint\":false,\"idempotentHint\":true,\"openWorldHint\":false}",
+      "parameters": {
+        "type": "object",
+        "description": "Structured result",
+        "properties": {
+          "operationRef": {
+            "type": "string",
+            "description": "本会话可见的操作引用",
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "operationRef"
+        ],
+        "additionalProperties": false
+      }
+    }
+  }
+]

@@ -114,6 +114,15 @@ data class DynamicResponse(
     }
 }
 
+/** Explicit provider identity; never falls back to another package or process. */
+data class DynamicTarget(val packageName: String, val processName: String) {
+    init {
+        require(packageName.isNotBlank() && processName.isNotBlank())
+    }
+}
+
+data class DynamicProviderCapability(val target: DynamicTarget, val capability: DynamicCapability)
+
 data class DynamicCapability(
     val name: String,
     val kind: Kind,

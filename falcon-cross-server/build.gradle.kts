@@ -56,8 +56,9 @@ android {
 }
 
 dependencies {
-    implementation("com.github.Coder-MarkBest.Falcon:falcon-core:1.0.0")
-    ksp("com.github.Coder-MarkBest.Falcon:falcon-ksp:1.0.0")
+    implementation(project(":falcon-core"))
+    implementation(project(":falcon-mcp-adapters"))
+    ksp(project(":falcon-ksp"))
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     implementation("androidx.core:core-ktx:1.12.0")
 

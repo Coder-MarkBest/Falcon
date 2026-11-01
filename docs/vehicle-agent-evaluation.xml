@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Read-only evaluation against the default DemoVehicle fixture, not a real vehicle.
+     Expected answers are derived from fixture code. No live-model evaluation has run. -->
+<evaluation>
+  <qa_pair>
+    <question>解析已保存的家并规划路线，将返回的预计行程秒数换算成分钟。只返回分钟数，不启动导航。</question>
+    <answer>20</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>解析已保存的家并规划路线，将路线距离换算成公里。只返回公里数，不启动导航。</question>
+    <answer>15</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>读取家的路线信息，用距离和预计时间计算这条路线的平均速度，单位公里每小时。只返回数值，不启动导航。</question>
+    <answer>45</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>读取主驾空调可调范围并查看工具输入契约，两者共同允许的最高与最低温度相差多少摄氏度？只返回数值，不设置温度。</question>
+    <answer>14</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>读取主驾空调范围和步长，并对照设置工具契约，从最低到最高共有多少个可选设定温度？包含两个端点，只返回数量，不设置温度。</question>
+    <answer>29</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>读取主驾温度步长并对照工具契约，增加1摄氏度对应几个步长？只返回数量，不执行调整。</question>
+    <answer>2</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>读取音乐搜索工具契约，按其允许的最大数量搜索轻松音乐，再排除不可播放和需要购买的候选。剩下多少项？只返回数量，不播放。</question>
+    <answer>1</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>查阅音乐工具契约并搜索轻松音乐，找出无需购买且可以播放的候选标题。只返回标题，不播放。</question>
+    <answer>轻松驾驶 · 模拟歌单</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>先解析家的引用，再规划路线。将路线的米数除以预计分钟数，得到每分钟行驶多少米？只返回数值，不启动导航。</question>
+    <answer>750</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>解析家并规划路线，同时搜索轻松音乐且只保留免费可播放候选。预计行程分钟数乘以候选数量是多少？只返回数值，不启动导航或播放。</question>
+    <answer>20</answer>
+  </qa_pair>
+</evaluation>

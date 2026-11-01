@@ -12,6 +12,8 @@ import com.falcon.ipc.security.SignatureGuard
 import com.falcon.ipc.protocol.IpcEnvelope
 import com.falcon.ipc.protocol.ErrorCode
 import com.falcon.ipc.protocol.IpcException
+import com.falcon.ipc.dynamic.DynamicTarget
+import com.falcon.ipc.dynamic.DynamicProviderCapability
 import com.falcon.ipc.dynamic.DynamicCapability
 import com.falcon.ipc.dynamic.DynamicPayload
 import com.falcon.ipc.dynamic.DynamicProtocol
@@ -308,12 +310,30 @@ class FalconManager internal constructor(
         supportedVersions: Set<Int> = setOf(1),
         headers: DynamicPayload = DynamicPayload.EMPTY,
         body: DynamicPayload = DynamicPayload.EMPTY
+    ): DynamicResponse = callDynamic(route, supportedVersions, headers, body, null)
+
+    /** Invoke exactly this provider. Missing/unavailable targets never fall back. */
+    suspend fun callTo(
+        target: DynamicTarget,
+        route: String,
+        supportedVersions: Set<Int> = setOf(1),
+        headers: DynamicPayload = DynamicPayload.EMPTY,
+        body: DynamicPayload = DynamicPayload.EMPTY
+    ): DynamicResponse = callDynamic(route, supportedVersions, headers, body, target)
+
+    private suspend fun callDynamic(
+        route: String,
+        supportedVersions: Set<Int> = setOf(1),
+        headers: DynamicPayload = DynamicPayload.EMPTY,
+        body: DynamicPayload = DynamicPayload.EMPTY,
+        target: DynamicTarget? = null
     ): DynamicResponse {
         require(supportedVersions.isNotEmpty() && supportedVersions.all { it > 0 }) {
             "supportedVersions must contain positive versions"
         }
         val localVersion = serviceRegistry.dynamic.negotiateRoute(route, supportedVersions)
-        if (localVersion != null) {
+        val localTarget = DynamicTarget(context.packageName, ProcessUtils.getCurrentProcessName(context))
+        if (localVersion != null && (target == null || target == localTarget)) {
             val requestId = java.util.UUID.randomUUID().toString()
             val response = withContext(threadPool.dispatcher) {
                 messageRouter.handleLocal(
@@ -326,7 +346,7 @@ class FalconManager internal constructor(
             return DynamicProtocol.decodeResponse(response)
         }
 
-        val selected = selectDynamicPeer("route", route, supportedVersions)
+        val selected = selectDynamicPeer("route", route, supportedVersions, target)
             ?: throw IpcException(ErrorCode.SERVICE_NOT_FOUND, "No compatible dynamic route: $route")
         val requestId = java.util.UUID.randomUUID().toString()
         val envelope = dynamicCallEnvelope(route, selected.second, requestId, headers, body)
@@ -360,9 +380,20 @@ class FalconManager internal constructor(
 
     /** Return locally visible and remotely advertised dynamic capabilities. */
     suspend fun dynamicCapabilities(): List<DynamicCapability> {
-        val result = serviceRegistry.dynamic.capabilities().toMutableSet()
-        val peers = peerManager?.getAllConnections()?.values.orEmpty()
-        for (peer in peers) {
+        return dynamicProviderCapabilities().map { it.capability }.distinct()
+            .sortedWith(compareBy({ it.kind.name }, { it.name }))
+    }
+
+    /** Capabilities retain provider identity, for explicit routing and conflict resolution. */
+    suspend fun dynamicProviderCapabilities(): List<DynamicProviderCapability> {
+        val local = DynamicTarget(context.packageName, ProcessUtils.getCurrentProcessName(context))
+        val result = serviceRegistry.dynamic.capabilities().map {
+            DynamicProviderCapability(local, it)
+        }.toMutableList()
+        for (peer in peerManager?.getAllConnections()?.values.orEmpty()) {
+            val authority = peer.registryUri.authority ?: continue
+            if (!authority.endsWith(".falcon.registry")) continue
+            val target = DynamicTarget(authority.removeSuffix(".falcon.registry"), peer.processName)
             val response = withContext(threadPool.dispatcher) {
                 peer.transport.invoke(IpcEnvelope(
                     serviceKey = DynamicProtocol.SERVICE_KEY,
@@ -377,27 +408,33 @@ class FalconManager internal constructor(
                 val kind = runCatching {
                     DynamicCapability.Kind.valueOf(item.getString("kind").orEmpty())
                 }.getOrNull() ?: return@forEach
-                result += DynamicCapability(name, kind, item.getIntArray("versions")?.toSet().orEmpty())
+                result += DynamicProviderCapability(target, DynamicCapability(
+                    name, kind, item.getIntArray("versions")?.toSet().orEmpty()
+                ))
             }
         }
-        return result.sortedWith(compareBy({ it.kind.name }, { it.name }))
+        return result.distinct()
     }
 
     private suspend fun selectDynamicPeer(
         kind: String,
         name: String,
-        versions: Set<Int>
+        versions: Set<Int>,
+        target: DynamicTarget? = null
     ): Pair<PeerConnection, Int>? {
-        val cacheKey = listOf(kind, name, versions.sorted().joinToString(",")).joinToString("#")
+        val cacheKey = listOf(kind, name, versions.sorted().joinToString(","), target?.packageName.orEmpty(), target?.processName.orEmpty()).joinToString("#")
         dynamicPeerCache[cacheKey]?.let { cached ->
-            if (peerManager?.getConnection(cached.peer.processName) != null) {
+            if (peerManager?.getConnection(cached.peer.processName) === cached.peer) {
                 return cached.peer to cached.version
             }
             dynamicPeerCache.remove(cacheKey)
         }
         val selected = withTimeoutOrNull(config.timeout.connectMs) {
         coroutineScope {
-            peerManager?.getAllConnections()?.values.orEmpty().map { peer ->
+            peerManager?.getAllConnections()?.values.orEmpty().filter { peer ->
+                target == null || (peer.processName == target.processName &&
+                    peer.registryUri.authority == "${target.packageName}.falcon.registry")
+            }.map { peer ->
                 async {
                     val probe = IpcEnvelope(
                         serviceKey = DynamicProtocol.SERVICE_KEY,

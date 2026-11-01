@@ -29,3 +29,5 @@ include(":falcon-benchmark")
 include(":falcon-gradle-plugin")
 include(":falcon-cross-server")
 include(":falcon-cross-client")
+
+include(":falcon-capability", ":falcon-mcp-adapters", ":falcon-agent-runtime", ":falcon-mcp-gateway", ":falcon-agent-demo")

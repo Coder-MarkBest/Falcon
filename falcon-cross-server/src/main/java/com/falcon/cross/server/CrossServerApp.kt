@@ -3,6 +3,7 @@ package com.falcon.cross.server
 import android.app.Application
 import android.util.Log
 import com.falcon.cross.shared.ICrossService
+import com.falcon.mcp.adapters.DemoVehicleRoutes
 import com.falcon.ipc.Falcon
 import com.falcon.ipc.dynamic.DynamicPayload
 import com.falcon.ipc.dynamic.DynamicResponse
@@ -56,6 +57,7 @@ class CrossServerApp : Application() {
             transport { binderPoolSize = 4; maxBinderPayloadSize = 256 * 1024 }
         }
         falcon.register(ICrossService::class, CrossServiceImpl())
+        if (processName.endsWith(":server")) DemoVehicleRoutes.register(this, falcon)
 
         // Dynamic RPC uses only platform wire types. Client and server do not share
         // an interface or model class for these routes and topics.
