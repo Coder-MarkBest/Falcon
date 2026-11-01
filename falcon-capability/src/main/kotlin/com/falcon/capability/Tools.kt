@@ -95,7 +95,7 @@ object VehicleTools {
         objectField(input), objectField(output, requiredOutput), scope, read, idempotent)
 
     val all: List<ToolDefinition> = listOf(
-        tool("profile_resolve_place", "解析当前授权用户已保存的家；不存在时应追问，不猜测地址。",
+        tool("profile_resolve_place", "解析当前授权用户已保存的家；不存在时请用户先在车机设置中保存家庭地址，然后再试。不支持聊天输入具体地址、地址搜索或保存地址，不能建议用户提供具体地址，不猜测地址。",
             "profile/place/resolve", fields("label" to s("已保存地点标签", "home")),
             fields("destinationRef" to s("当前用户的目的地引用"), "displayName" to s("目的地显示名称")), "profile.read", true),
         tool("navigation_plan_route", "规划到目的地的路线，不启动导航。", "navigation/route/plan",

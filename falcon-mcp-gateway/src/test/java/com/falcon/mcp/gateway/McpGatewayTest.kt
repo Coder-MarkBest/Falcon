@@ -97,4 +97,21 @@ class McpGatewayTest {
             assertEquals(400, http("POST", size = 32769))
         } finally { server.stop() }
     }
+    @Test fun `missing home error directs user to saved place settings without asking for an address`() = runTest {
+        val dispatcher = McpDispatcher(object : ToolClient {
+            override suspend fun call(name: String, arguments: JsonObject, context: ToolContext): JsonObject {
+                throw ToolException("HOME_NOT_SET", "missing")
+            }
+        }, principal)
+        val session = connect(dispatcher)
+        val reply = dispatcher.dispatch(request("tools/call", obj("name" to str("profile_resolve_place"),
+            "arguments" to obj("label" to str("home")))), session, McpDispatcher.VERSION)
+        val result = reply.body!!.getValue("result").jsonObject
+        assertEquals(bool(true), result["isError"])
+        assertEquals(str("HOME_NOT_SET"), result.getValue("_meta").jsonObject["falcon/errorCode"])
+        val guidance = result.getValue("content").jsonArray.single().jsonObject.text("text")
+        assertTrue(guidance.contains("车机设置中保存家庭地址"))
+        assertTrue(guidance.contains("不支持聊天输入具体地址"))
+    }
+
 }

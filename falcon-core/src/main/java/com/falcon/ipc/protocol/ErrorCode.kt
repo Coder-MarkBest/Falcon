@@ -15,6 +15,8 @@ object ErrorCode {
     const val TIMEOUT = 2001
     const val PEER_NOT_CONNECTED = 2002
     const val TRANSPORT_ERROR = 2003
+    /** Target/route readiness deadline expired before dispatching a business call. */
+    const val PROVIDER_NOT_READY = 2004
 
     // 3000–3999: Serialization/encoding errors
     const val SERIALIZATION_ERROR = 3001

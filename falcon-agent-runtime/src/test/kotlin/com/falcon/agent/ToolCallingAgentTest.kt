@@ -187,4 +187,22 @@ class ToolCallingAgentTest {
         assertTrue(policy.pending.isEmpty())
     }
 
+    @Test fun `not dispatched readiness error can finish without pretending a write is pending`() = runTest {
+        val tools = Session(catalog("climate_get_state", "climate_set_temperature")) { name, _ ->
+            if (name == "climate_get_state") result(climate())
+            else ToolCallingAgent.errorResult("PROVIDER_NOT_READY", "没有下发操作")
+        }
+        var round = 0
+        val result = ToolCallingAgent(ToolCallingModel { request -> when (round++) {
+            0 -> choice(call("a", "climate_get_state", obj("zone" to str("driver"))))
+            1 -> choice(call("b", "climate_set_temperature", setting()))
+            else -> {
+                assertEquals(str("PROVIDER_NOT_READY"), lastResult(request)["_meta"]!!.jsonObject["falcon/errorCode"])
+                obj("finish_reason" to str("stop"), "message" to obj("role" to str("assistant"), "content" to str("服务未就绪，未调温。")))
+            }
+        } }, tools).run("有点冷", session)
+        assertEquals(3, result.rounds)
+        assertEquals("服务未就绪，未调温。", result.summary)
+    }
+
 }

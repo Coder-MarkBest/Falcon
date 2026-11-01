@@ -24,6 +24,7 @@ import com.falcon.ipc.transport.TransportResult
 import com.falcon.ipc.util.CallerResolver
 import com.falcon.ipc.util.FalconLogger
 import com.falcon.ipc.util.ProcessUtils
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withTimeoutOrNull
@@ -312,7 +313,7 @@ class FalconManager internal constructor(
         body: DynamicPayload = DynamicPayload.EMPTY
     ): DynamicResponse = callDynamic(route, supportedVersions, headers, body, null)
 
-    /** Invoke exactly this provider. Missing/unavailable targets never fall back. */
+    /** Wait up to connectMs for this provider and route. Never fall back or retry a dispatched call. */
     suspend fun callTo(
         target: DynamicTarget,
         route: String,
@@ -347,7 +348,10 @@ class FalconManager internal constructor(
         }
 
         val selected = selectDynamicPeer("route", route, supportedVersions, target)
-            ?: throw IpcException(ErrorCode.SERVICE_NOT_FOUND, "No compatible dynamic route: $route")
+            ?: throw IpcException(
+                if (target == null) ErrorCode.SERVICE_NOT_FOUND else ErrorCode.PROVIDER_NOT_READY,
+                "No compatible dynamic route ready: $route (request not dispatched)"
+            )
         val requestId = java.util.UUID.randomUUID().toString()
         val envelope = dynamicCallEnvelope(route, selected.second, requestId, headers, body)
         return when (val result = withContext(threadPool.dispatcher) { selected.first.transport.invoke(envelope) }) {
@@ -430,28 +434,41 @@ class FalconManager internal constructor(
             dynamicPeerCache.remove(cacheKey)
         }
         val selected = withTimeoutOrNull(config.timeout.connectMs) {
-        coroutineScope {
-            peerManager?.getAllConnections()?.values.orEmpty().filter { peer ->
-                target == null || (peer.processName == target.processName &&
-                    peer.registryUri.authority == "${target.packageName}.falcon.registry")
-            }.map { peer ->
-                async {
-                    val probe = IpcEnvelope(
-                        serviceKey = DynamicProtocol.SERVICE_KEY,
-                        method = DynamicProtocol.PROBE,
-                        argsBundle = android.os.Bundle().apply {
-                            putString("kind", kind)
-                            putString("name", name)
-                            putIntArray("versions", versions.toIntArray())
+            var attempts = 0
+            var found: Pair<PeerConnection, Int>?
+            do {
+                found = coroutineScope {
+                    peerManager?.getAllConnections()?.values.orEmpty().filter { peer ->
+                        target == null || (peer.processName == target.processName &&
+                            peer.registryUri.authority == "${target.packageName}.falcon.registry")
+                    }.map { peer ->
+                        async {
+                            val probe = IpcEnvelope(
+                                serviceKey = DynamicProtocol.SERVICE_KEY,
+                                method = DynamicProtocol.PROBE,
+                                argsBundle = android.os.Bundle().apply {
+                                    putString("kind", kind)
+                                    putString("name", name)
+                                    putIntArray("versions", versions.toIntArray())
+                                }
+                            )
+                            val response = withContext(threadPool.dispatcher) { peer.transport.invoke(probe) }
+                            val data = (response as? TransportResult.Success)?.data as? android.os.Bundle
+                            val version = data?.getInt("version", 0) ?: 0
+                            if (version > 0 && peerManager?.getConnection(peer.processName) === peer) peer to version else null
                         }
-                    )
-                    val response = withContext(threadPool.dispatcher) { peer.transport.invoke(probe) }
-                    val data = (response as? TransportResult.Success)?.data as? android.os.Bundle
-                    val version = data?.getInt("version", 0) ?: 0
-                    if (version > 0) peer to version else null
+                    }.mapNotNull { it.await() }.maxByOrNull { it.second }
                 }
-            }.mapNotNull { it.await() }.maxByOrNull { it.second }
-        }
+                if (found == null && target != null) {
+                    if (attempts == 0) FalconLogger.d("Dynamic", "Waiting for provider ${target.processName}, route=$name")
+                    // A cold registry can defer trust before Application init; its first query may
+                    // return no peers. Actively rediscover while waiting, even if no observer fires.
+                    if (attempts++ % 5 == 0) peerManager?.refreshPeers()
+                    delay(100)
+                }
+            } while (found == null && target != null)
+            if (attempts > 0 && found != null) FalconLogger.d("Dynamic", "Provider ready ${target?.processName}, route=$name")
+            found
         }
         if (selected != null) dynamicPeerCache[cacheKey] = CachedDynamicPeer(selected.first, selected.second)
         return selected

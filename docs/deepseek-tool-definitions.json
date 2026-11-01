@@ -3,7 +3,7 @@
     "type": "function",
     "function": {
       "name": "profile_resolve_place",
-      "description": "解析当前授权用户已保存的家；不存在时应追问，不猜测地址。\nMCP outputSchema: {\"type\":\"object\",\"description\":\"Structured result\",\"properties\":{\"destinationRef\":{\"type\":\"string\",\"description\":\"当前用户的目的地引用\",\"maxLength\":256},\"displayName\":{\"type\":\"string\",\"description\":\"目的地显示名称\",\"maxLength\":256}},\"required\":[\"destinationRef\",\"displayName\"],\"additionalProperties\":false}\nMCP annotations: {\"readOnlyHint\":true,\"destructiveHint\":false,\"idempotentHint\":true,\"openWorldHint\":false}",
+      "description": "解析当前授权用户已保存的家；不存在时请用户先在车机设置中保存家庭地址，然后再试。不支持聊天输入具体地址、地址搜索或保存地址，不能建议用户提供具体地址，不猜测地址。\nMCP outputSchema: {\"type\":\"object\",\"description\":\"Structured result\",\"properties\":{\"destinationRef\":{\"type\":\"string\",\"description\":\"当前用户的目的地引用\",\"maxLength\":256},\"displayName\":{\"type\":\"string\",\"description\":\"目的地显示名称\",\"maxLength\":256}},\"required\":[\"destinationRef\",\"displayName\"],\"additionalProperties\":false}\nMCP annotations: {\"readOnlyHint\":true,\"destructiveHint\":false,\"idempotentHint\":true,\"openWorldHint\":false}",
       "parameters": {
         "type": "object",
         "description": "Structured result",

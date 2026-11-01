@@ -22,6 +22,7 @@ class GatewayApp : Application() {
                 trustedSignatures = setOf("223b61dec24a63fdc836a01523ce6fb3bed67b32350fdd03c9271a7c4b5d58b1")
                 rateLimitPerSecond = 50; maxConcurrentCalls = 8
             }
+            timeout { connectMs = 5000 }
             transport { invokeTimeoutMs = 8000 }
         }
         val principal = GatewayPrincipal("demo_driver", "driver", VehicleTools.all.map { it.scope }.toSet())

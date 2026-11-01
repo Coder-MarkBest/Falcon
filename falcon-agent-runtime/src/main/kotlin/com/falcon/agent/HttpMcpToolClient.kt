@@ -74,7 +74,7 @@ class HttpMcpToolClient(private val endpoint: String, private val token: String)
         try {
             connection.requestMethod = "POST"; connection.doOutput = true
             connection.instanceFollowRedirects = false
-            connection.connectTimeout = 3000; connection.readTimeout = 10000
+            connection.connectTimeout = 3000; connection.readTimeout = 20000
             connection.setRequestProperty("Authorization", "Bearer $token")
             connection.setRequestProperty("Content-Type", "application/json")
             connection.setRequestProperty("Accept", "application/json, text/event-stream")

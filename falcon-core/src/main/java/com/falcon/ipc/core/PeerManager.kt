@@ -97,7 +97,7 @@ class PeerManager(
         stateCallbacks.remove(callback)
     }
 
-    private fun refreshPeers() {
+    internal fun refreshPeers() {
         threadPool.submit {
             try {
                 for (uri in registryUris) {

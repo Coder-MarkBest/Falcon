@@ -46,7 +46,7 @@ internal class VehicleToolPolicy(private val zone: String) {
     fun failure(name: String, result: JsonObject) {
         val code = (result["_meta"] as? JsonObject)?.get("falcon/errorCode")
         // Only definite server rejections clear pending. Transport/unknown errors need reconciliation.
-        if (code in setOf(str("STATE_CONFLICT"), str("INVALID_ARGUMENT"), str("FORBIDDEN"),
+        if (code in setOf(str("PROVIDER_NOT_READY"), str("STATE_CONFLICT"), str("INVALID_ARGUMENT"), str("FORBIDDEN"),
                 str("ROUTE_EXPIRED"), str("INVALID_REFERENCE"), str("CAPACITY_EXCEEDED"), str("HOME_NOT_SET"))) pending.remove(name)
     }
     fun after(name: String, args: JsonObject, data: JsonObject) {

@@ -99,6 +99,10 @@ class McpDispatcher(
     }
     private fun success(id: JsonElement, result: JsonObject) = obj("jsonrpc" to str("2.0"), "id" to id, "result" to result)
     private fun toolError(code: String) = obj("content" to JsonArray(listOf(obj("type" to str("text"),
-        "text" to str("$code：操作未确认完成。")))), "isError" to bool(true),
+        "text" to str(when (code) {
+            "HOME_NOT_SET" -> "HOME_NOT_SET：请先在车机设置中保存家庭地址，然后再试。当前工具不支持聊天输入具体地址。"
+            "PROVIDER_NOT_READY" -> "PROVIDER_NOT_READY：服务尚未就绪，本次没有下发操作，请稍后重试。"
+            else -> "$code：操作未确认完成。"
+        })))), "isError" to bool(true),
         "_meta" to obj("falcon/errorCode" to str(code)))
 }

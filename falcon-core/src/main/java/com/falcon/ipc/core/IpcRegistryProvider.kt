@@ -192,6 +192,10 @@ class IpcRegistryProvider : ContentProvider() {
      * @return false if cross-app trust is not yet configured (defer, don't throw).
      * @throws SecurityException if the caller is explicitly unauthorized.
      */
+    // Binder queries and local registrations run concurrently. Keep re-init, cache
+    // invalidation and verification atomic so an old-trust rejection cannot repopulate
+    // the cache after new trust has been installed.
+    @Synchronized
     private fun enforceSignature(): Boolean {
         val ctx = context ?: throw SecurityException("No context")
         // Lazy-init on first use, and re-init whenever trustedSignatures changes.

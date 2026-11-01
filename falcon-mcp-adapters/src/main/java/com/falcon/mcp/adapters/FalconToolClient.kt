@@ -4,6 +4,7 @@ import com.falcon.capability.*
 import com.falcon.ipc.core.FalconManager
 import com.falcon.ipc.dynamic.*
 import com.falcon.ipc.protocol.IpcException
+import com.falcon.ipc.protocol.ErrorCode
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.*
 
@@ -79,6 +80,7 @@ class FalconToolClient(private val falcon: FalconManager, private val target: Dy
             }, FalconJsonCodec.encode(arguments))
         } catch (e: CancellationException) { throw e
         } catch (e: IpcException) {
+            if (e.errorCode == ErrorCode.PROVIDER_NOT_READY) throw ToolException("PROVIDER_NOT_READY", "服务尚未就绪，本次没有下发操作。")
             throw ToolException("TRANSPORT_ERROR", "Falcon调用未获得可确认结果。")
         }
         val data = FalconJsonCodec.decode(response.body)
