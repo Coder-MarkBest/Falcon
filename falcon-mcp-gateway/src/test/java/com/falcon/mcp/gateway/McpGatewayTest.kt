@@ -67,7 +67,7 @@ class McpGatewayTest {
         server.start(3000, true)
         try {
             val client = HttpMcpToolClient("http://127.0.0.1:${server.listeningPort}/mcp", "test-token")
-            assertEquals(10, client.listTools().size)
+            assertEquals(13, client.listTools().size)
             val result = HomeJourneyAgent(MockIntentModel(), client).run("我要回家，有点冷，放点轻松的音乐", AgentSession("demo_driver", "driver"))
             assertEquals(3, result.branches.size)
             assertTrue(result.summary, result.branches.all { it.status == BranchStatus.SUCCEEDED })

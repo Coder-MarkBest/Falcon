@@ -1,0 +1,206 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "低电量回家：模型决策与工具执行",
+    "locale": "zh-CN",
+    "quality_profile": "showcase"
+  },
+  "lanes": [
+    {
+      "id": "decision",
+      "label": "用户与模型"
+    },
+    {
+      "id": "host",
+      "label": "Agent 与网关"
+    },
+    {
+      "id": "vehicle",
+      "label": "Falcon 业务进程"
+    }
+  ],
+  "mainPath": [
+    "request",
+    "catalog",
+    "model",
+    "guard",
+    "gateway",
+    "business",
+    "feedback"
+  ],
+  "nodes": [
+    {
+      "id": "request",
+      "lane": "decision",
+      "col": 0,
+      "type": "external",
+      "label": "低电量回家",
+      "sublabel": "功率、绕路与排队约束",
+      "width": 170
+    },
+    {
+      "id": "catalog",
+      "lane": "host",
+      "col": 1,
+      "type": "database",
+      "label": "MCP 工具目录",
+      "sublabel": "说明与参数 Schema",
+      "width": 170
+    },
+    {
+      "id": "model",
+      "lane": "decision",
+      "col": 2,
+      "type": "cloud",
+      "label": "DeepSeek 决策",
+      "sublabel": "选择工具和参数",
+      "width": 170
+    },
+    {
+      "id": "guard",
+      "lane": "host",
+      "col": 2,
+      "type": "security",
+      "label": "本地执行约束",
+      "sublabel": "引用、时效与幂等校验",
+      "width": 170
+    },
+    {
+      "id": "gateway",
+      "lane": "host",
+      "col": 3,
+      "type": "messagebus",
+      "label": "MCP Gateway",
+      "sublabel": "认证、Schema 与路由",
+      "width": 170
+    },
+    {
+      "id": "business",
+      "lane": "vehicle",
+      "col": 3,
+      "type": "backend",
+      "label": "Demo 车辆服务",
+      "sublabel": "续航、充电站与导航",
+      "width": 170
+    },
+    {
+      "id": "feedback",
+      "lane": "vehicle",
+      "col": 4,
+      "type": "database",
+      "label": "真实工具结果",
+      "sublabel": "状态或结构化错误",
+      "width": 170
+    },
+    {
+      "id": "reselect",
+      "lane": "decision",
+      "col": 4,
+      "type": "cloud",
+      "label": "下一轮重新选择",
+      "sublabel": "站点离线则检查备选站",
+      "width": 170
+    },
+    {
+      "id": "verified",
+      "lane": "host",
+      "col": 5,
+      "type": "security",
+      "label": "实际状态核实",
+      "sublabel": "导航与播放会话一致",
+      "width": 170
+    },
+    {
+      "id": "answer",
+      "lane": "decision",
+      "col": 5,
+      "type": "frontend",
+      "label": "说明执行结果",
+      "sublabel": "不预约、不付款",
+      "width": 170
+    }
+  ],
+  "edges": [
+    {
+      "id": "discover",
+      "from": "request",
+      "to": "catalog",
+      "label": "tools/list"
+    },
+    {
+      "id": "prompt",
+      "from": "catalog",
+      "to": "model",
+      "label": "tools + messages"
+    },
+    {
+      "id": "choose",
+      "from": "model",
+      "to": "guard",
+      "label": "tool_calls"
+    },
+    {
+      "id": "dispatch",
+      "from": "guard",
+      "to": "gateway",
+      "label": "tools/call"
+    },
+    {
+      "id": "binder",
+      "from": "gateway",
+      "to": "business",
+      "label": "就绪后 Binder 调用"
+    },
+    {
+      "id": "result",
+      "from": "business",
+      "to": "feedback",
+      "label": "结构化结果"
+    },
+    {
+      "id": "return",
+      "from": "feedback",
+      "to": "reselect",
+      "label": "role=tool 回传",
+      "role": "return"
+    },
+    {
+      "id": "next",
+      "from": "reselect",
+      "to": "guard",
+      "label": "下一轮调用",
+      "role": "return"
+    },
+    {
+      "id": "observe",
+      "from": "feedback",
+      "to": "verified",
+      "label": "读取状态"
+    },
+    {
+      "id": "finish",
+      "from": "verified",
+      "to": "answer",
+      "label": "允许结束"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "模型负责选择",
+      "items": [
+        "24km − 15km < 10km 预留：先找充电站",
+        "江畔站离线 → 公园站复核可用 → 导航并播放"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "宿主保证执行边界",
+      "items": [
+        "实测 9 轮 / 12 次工具调用，写后核实实际会话",
+        "业务数据为模拟；没有预约、付款或启动充电工具"
+      ]
+    }
+  ]
+}

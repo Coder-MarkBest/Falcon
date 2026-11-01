@@ -24,7 +24,7 @@ falcon-cross-server APK 的 :server 进程
 
 | 模块 | 职责 |
 | --- | --- |
-| `falcon-capability` | 纯 Kotlin 的 10 个工具定义、输入/输出 JSON Schema、校验、错误与客户端接口 |
+| `falcon-capability` | 纯 Kotlin 的 13 个工具定义、输入/输出 JSON Schema、校验、错误与客户端接口 |
 | `falcon-agent-runtime` | DeepSeek 多轮 tool_calls、远端 Schema 校验、执行策略、MCP HTTP 客户端；保留离线 Mock |
 | `falcon-mcp-adapters` | JSON ↔ 平台 Bundle 编码、Falcon 定向调用、模拟业务及 route 注册 |
 | `falcon-mcp-gateway` | 独立 Android 网关 APK、认证、MCP 服务及同签名凭据交换 |
@@ -88,6 +88,9 @@ adb shell am start -S -n com.falcon.agent.demo/.AgentActivity \
 | `media_search` | `mood=relaxing, limit` | `items[]`：引用、标题、可播放/付费标志 | `media/content/search` / `media.read` |
 | `media_play` | `contentRef` | 操作凭据、播放会话 | `media/playback/play` / `media.write` |
 | `media_get_state` | `{}` | 当前播放状态、内容及会话 | `media/playback/get` / `media.read` |
+| `energy_get_state` | `{}` | 电量、估算续航、预留里程、接口类型 | `energy/state/get` / `energy.read` |
+| `charging_search` | `destinationRef, maxDetourMinutes, minPowerKw, maxQueueMinutes` | 按价格升序的合规候选 | `charging/stations/search` / `charging.read` |
+| `charging_check_station` | `stationRef` | 实时可用性、排队、站点目的地引用和有效期 | `charging/stations/check` / `charging.read` |
 | `operation_get` | `operationRef` | 操作状态 | `agent/operation/get` / `operation.read` |
 
 操作凭据含 `operationRef, status`。当前模拟服务同步完成，返回 `succeeded`。
@@ -207,7 +210,7 @@ Agent、Gateway、Cross Server的`:server`为三个独立进程。DeepSeek、HTT
 
 ### 不同指令及失败场景的模拟器复验（2026-11-01）
 
-所有用例使用真实DeepSeek，同一套system提示词及完整10工具目录，未按指令裁剪工具或强制工具选择。
+该批历史用例使用真实DeepSeek，同一套system提示词及当时完整10工具目录，未按指令裁剪工具或强制工具选择。
 校验后续模型请求确实包含MCP结果，并比较业务服务持久化状态，确认未请求的功能没有被写入。
 
 | 输入/条件 | 模型轮次 / 实际工具调用数 | 观察到的调用及结果 |
@@ -249,3 +252,9 @@ Agent、Gateway、Cross Server的`:server`为三个独立进程。DeepSeek、HTT
 [Lifecycle](https://modelcontextprotocol.io/specification/2025-11-25/basic/lifecycle)。
 
 只读模型评估题见 `vehicle-agent-evaluation.xml`（默认模拟数据集）。已提供10道题及预期答案，未接真实模型执行评估。
+
+## 带约束的补能决策与故障换站
+
+当前目录扩展至13工具，新增能源查询、沿途充电站搜索和实时复核，复用导航及媒体执行。
+已在相同工具目录与system提示词下，以真实DeepSeek验证低电量换站（9轮/12调用）、续航充足直接回家（5轮/5调用）、严格搜索无结果不执行（4轮/4调用）。
+完整输入、逐轮输入输出、模拟边界、复验脚本和后续场景见 [CHARGING_AGENT_CASE.md](CHARGING_AGENT_CASE.md)，[Archify执行流程图](diagrams/charging-agent.html)可独立打开。

@@ -1,0 +1,13 @@
+{
+  "diagram_type": "workflow",
+  "output": "/Users/xianxiaoli/ClaudeProjects/FastIPC/docs/diagrams/charging-agent.html",
+  "specification_sha256": "11b7a0ebcb82db7c70d05a7c579dc21619a30db977bc4d2d0da0b1fc84c3d2a6",
+  "artifact_sha256": "8fce7eeff28a25a156660763362dffdb4664f45f993c9f2e2e2ddfb5cc63e9c0",
+  "validation": "9/9 showcase, 0 errors, 0 warnings",
+  "browser_evidence": "passed",
+  "browser_receipt": "charging-agent.visual-check.json",
+  "visual_review": "passed",
+  "visual_review_scope": "Inspected final light 1440x900 and dark 2048x1320 screenshots; both themes and endpoint compositions, readable labels and unobstructed cards. Automated receipt covers all four viewports and four captures.",
+  "correction_rounds": 1,
+  "correction_note": "Added actual range calculation, offline fallback, and observed round/call counts to the conclusion cards after the live test."
+}

@@ -44,22 +44,35 @@ class DemoVehicle(
                     obj("destinationRef" to str("demo_driver:home"), "displayName" to str("家"))
                 }
                 "navigation_plan_route" -> {
-                    if (args.text("destinationRef") != "demo_driver:home") throw ToolException("INVALID_REFERENCE", "目的地引用无效")
+                    val destination = args.text("destinationRef")
+                    val station = stations.firstOrNull { it.text("stationRef") == destination }
+                    if (destination != "demo_driver:home") {
+                        if (station == null) throw ToolException("INVALID_REFERENCE", "目的地引用无效")
+                        requireCheckedStation(destination, context)
+                    }
+                    val distance = station?.number("distanceKm")?.times(1000)?.toLong() ?: 15000L
                     val routeId = "route_" + UUID.randomUUID()
                     val expiry = clock() + 300_000
                     val routes = state.getValue("routes").jsonObject.filterValues { it.jsonPrimitive.long > clock() }
                     if (routes.size >= 64) throw ToolException("CAPACITY_EXCEEDED", "路线数量已达上限")
                     state = JsonObject(state + ("routes" to JsonObject(routes + (routeId to num(expiry)))))
+                    val details = (state["routeDetails"] as? JsonObject).orEmpty().filterKeys { it in routes }
+                    state = JsonObject(state + ("routeDetails" to JsonObject(details + (routeId to obj(
+                        "destinationRef" to str(destination), "distanceMeters" to num(distance), "workflowId" to str(context.workflowId))))))
                     obj("routeId" to str(routeId), "durationSeconds" to num(1200),
-                        "distanceMeters" to num(15000), "expiresAt" to num(expiry))
+                        "distanceMeters" to num(distance), "expiresAt" to num(expiry))
                 }
                 "navigation_start" -> {
                     val routeId = args.text("routeId")
                     val expires = state.getValue("routes").jsonObject[routeId]?.jsonPrimitive?.longOrNull ?: 0
                     if (expires <= clock()) throw ToolException("ROUTE_EXPIRED", "路线无效或已过期")
+                    val detail = (state["routeDetails"] as? JsonObject)?.get(routeId) as? JsonObject
+                    if (detail != null && detail["workflowId"] != str(context.workflowId)) throw ToolException("INVALID_REFERENCE", "路线不属于当前任务")
+                    val destination = detail?.text("destinationRef") ?: "demo_driver:home"
+                    if (destination != "demo_driver:home") requireCheckedStation(destination, context)
                     val session = "nav_" + UUID.randomUUID()
                     state = JsonObject(state + ("navigation" to obj("status" to str("active"),
-                        "routeId" to str(routeId), "navigationSessionId" to str(session))))
+                        "routeId" to str(routeId), "navigationSessionId" to str(session), "destinationRef" to str(destination))))
                     receipt(obj("navigationSessionId" to str(session)), context)
                 }
                 "navigation_get_state" -> state.getValue("navigation").jsonObject
@@ -84,6 +97,30 @@ class DemoVehicle(
                     receipt(obj("playbackSessionId" to str(session)), context)
                 }
                 "media_get_state" -> state.getValue("media").jsonObject
+                "energy_get_state" -> energy()
+                "charging_search" -> {
+                    if (args.text("destinationRef") != "demo_driver:home" || state["homeSet"] != bool(true))
+                        throw ToolException("INVALID_REFERENCE", "仅支持已保存的家庭路线")
+                    obj("items" to JsonArray(stations.filter {
+                        it.number("powerKw") >= args.number("minPowerKw") &&
+                        it.integer("detourMinutes") <= args.integer("maxDetourMinutes") &&
+                        it.integer("queueMinutes") <= args.integer("maxQueueMinutes") && it["connector"] == energy()["connector"]
+                    }.sortedBy { it.number("pricePerKwh") }))
+                }
+                "charging_check_station" -> {
+                    val ref = args.text("stationRef")
+                    val station = stations.firstOrNull { it.text("stationRef") == ref }
+                        ?: throw ToolException("INVALID_REFERENCE", "站点引用无效")
+                    if (ref == "demo:charge:river" && state["firstStationOffline"] != bool(false))
+                        throw ToolException("STATION_OFFLINE", "首选站临时离线，请复核其他候选站")
+                    val checked = obj("stationRef" to str(ref), "destinationRef" to str(ref), "available" to bool(true),
+                        "queueMinutes" to station.getValue("queueMinutes"), "checkedAt" to num(clock()), "validUntil" to num(clock() + 60_000))
+                    val existing = (state["chargingChecks"] as? JsonObject).orEmpty().filterValues {
+                        it.jsonObject.integer("validUntil") > clock()
+                    }.entries.toList().takeLast(63).associate { it.toPair() }
+                    state = JsonObject(state + ("chargingChecks" to JsonObject(existing + ("${context.workflowId}:$ref" to checked))))
+                    checked
+                }
                 "operation_get" -> {
                     val record = state.getValue("operations").jsonObject[args.text("operationRef")]?.jsonObject
                         ?: throw ToolException("OPERATION_NOT_FOUND", "操作引用不存在")
@@ -103,6 +140,26 @@ class DemoVehicle(
             result
         } catch (e: Exception) { state = previous; throw e }
     }
+    private fun energy(): JsonObject = state["energy"] as? JsonObject ?: obj(
+        "socPercent" to num(18), "estimatedRangeKm" to num(24), "reserveKm" to num(10), "connector" to str("gbt_dc"))
+    private fun requireCheckedStation(ref: String, context: ToolContext) {
+        val quote = (state["chargingChecks"] as? JsonObject)?.get("${context.workflowId}:$ref") as? JsonObject
+        if (quote == null || quote.integer("validUntil") <= clock() || quote["available"] != bool(true))
+            throw ToolException("STATION_CHECK_REQUIRED", "必须在当前任务实时复核站点")
+        if (ref == "demo:charge:river" && state["firstStationOffline"] != bool(false))
+            throw ToolException("STATION_OFFLINE", "站点临时离线")
+        val distance = stations.single { it.text("stationRef") == ref }.number("distanceKm")
+        if (distance + energy().number("reserveKm") > energy().number("estimatedRangeKm"))
+            throw ToolException("INSUFFICIENT_RANGE", "估算续航不满足到站及预留要求")
+    }
+    private val stations = listOf(
+        station("river", "江畔快充（模拟）", 180, 4, 0, 0.8, 8),
+        station("park", "公园快充（模拟）", 150, 7, 5, 1.2, 12),
+        station("square", "广场充电（模拟）", 90, 3, 0, 0.6, 5)
+    )
+    private fun station(ref: String, name: String, power: Int, detour: Int, queue: Int, price: Double, distance: Int) = obj(
+        "stationRef" to str("demo:charge:$ref"), "name" to str(name), "powerKw" to num(power), "detourMinutes" to num(detour),
+        "queueMinutes" to num(queue), "pricePerKwh" to num(price), "distanceKm" to num(distance), "connector" to str("gbt_dc"))
     private fun receipt(extra: JsonObject, context: ToolContext): JsonObject {
         val ref = "op_" + UUID.randomUUID()
         val operation = obj("operationRef" to str(ref), "status" to str("succeeded"))

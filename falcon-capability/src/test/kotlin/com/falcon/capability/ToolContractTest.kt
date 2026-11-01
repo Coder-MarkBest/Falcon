@@ -15,7 +15,7 @@ class ToolContractTest {
             .forEach { value -> assertThrows(ToolException::class.java) { input.validate(value, "args") } }
     }
     @Test fun `descriptors are unique and all writes declare scopes`() {
-        assertEquals(10, VehicleTools.byName.size)
+        assertEquals(13, VehicleTools.byName.size)
         assertTrue(VehicleTools.all.filterNot { it.readOnly }.all { it.scope.endsWith(".write") })
         VehicleTools.all.forEach { assertNotNull(it.descriptor()["outputSchema"]) }
     }

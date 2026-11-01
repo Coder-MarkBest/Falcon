@@ -28,14 +28,14 @@
     "type": "function",
     "function": {
       "name": "navigation_plan_route",
-      "description": "规划到目的地的路线，不启动导航。\nMCP outputSchema: {\"type\":\"object\",\"description\":\"Structured result\",\"properties\":{\"routeId\":{\"type\":\"string\",\"description\":\"路线引用\",\"maxLength\":256},\"durationSeconds\":{\"type\":\"integer\",\"description\":\"预计时长秒\",\"minimum\":0.0},\"distanceMeters\":{\"type\":\"integer\",\"description\":\"距离米\",\"minimum\":0.0},\"expiresAt\":{\"type\":\"integer\",\"description\":\"有效期Unix毫秒\",\"minimum\":0.0}},\"required\":[\"routeId\",\"durationSeconds\",\"distanceMeters\",\"expiresAt\"],\"additionalProperties\":false}\nMCP annotations: {\"readOnlyHint\":true,\"destructiveHint\":false,\"idempotentHint\":true,\"openWorldHint\":false}",
+      "description": "规划到已保存地点或实时复核通过的充电站，不启动导航。返回距离可用于判断预留续航是否足够。\nMCP outputSchema: {\"type\":\"object\",\"description\":\"Structured result\",\"properties\":{\"routeId\":{\"type\":\"string\",\"description\":\"路线引用\",\"maxLength\":256},\"durationSeconds\":{\"type\":\"integer\",\"description\":\"预计时长秒\",\"minimum\":0.0},\"distanceMeters\":{\"type\":\"integer\",\"description\":\"距离米\",\"minimum\":0.0},\"expiresAt\":{\"type\":\"integer\",\"description\":\"有效期Unix毫秒\",\"minimum\":0.0}},\"required\":[\"routeId\",\"durationSeconds\",\"distanceMeters\",\"expiresAt\"],\"additionalProperties\":false}\nMCP annotations: {\"readOnlyHint\":true,\"destructiveHint\":false,\"idempotentHint\":true,\"openWorldHint\":false}",
       "parameters": {
         "type": "object",
         "description": "Structured result",
         "properties": {
           "destinationRef": {
             "type": "string",
-            "description": "由profile_resolve_place获得的引用",
+            "description": "由profile_resolve_place或charging_check_station获得的引用",
             "maxLength": 256
           }
         },
@@ -72,7 +72,7 @@
     "type": "function",
     "function": {
       "name": "navigation_get_state",
-      "description": "查询实际导航状态。\nMCP outputSchema: {\"type\":\"object\",\"description\":\"Structured result\",\"properties\":{\"status\":{\"type\":\"string\",\"description\":\"导航状态\",\"enum\":[\"idle\",\"active\"],\"maxLength\":256},\"routeId\":{\"type\":\"string\",\"description\":\"当前路线\",\"maxLength\":256},\"navigationSessionId\":{\"type\":\"string\",\"description\":\"导航会话\",\"maxLength\":256}},\"required\":[\"status\"],\"additionalProperties\":false}\nMCP annotations: {\"readOnlyHint\":true,\"destructiveHint\":false,\"idempotentHint\":true,\"openWorldHint\":false}",
+      "description": "查询实际导航状态。\nMCP outputSchema: {\"type\":\"object\",\"description\":\"Structured result\",\"properties\":{\"status\":{\"type\":\"string\",\"description\":\"导航状态\",\"enum\":[\"idle\",\"active\"],\"maxLength\":256},\"routeId\":{\"type\":\"string\",\"description\":\"当前路线\",\"maxLength\":256},\"navigationSessionId\":{\"type\":\"string\",\"description\":\"导航会话\",\"maxLength\":256},\"destinationRef\":{\"type\":\"string\",\"description\":\"当前目的地引用\",\"maxLength\":256}},\"required\":[\"status\"],\"additionalProperties\":false}\nMCP annotations: {\"readOnlyHint\":true,\"destructiveHint\":false,\"idempotentHint\":true,\"openWorldHint\":false}",
       "parameters": {
         "type": "object",
         "description": "Structured result",
@@ -211,6 +211,85 @@
         "description": "Structured result",
         "properties": {},
         "required": [],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "energy_get_state",
+      "description": "读取模拟电量、估算续航和最低预留续航。涉及能否到达或充电决策时先读取；估算不代表实际道路保证。\nMCP outputSchema: {\"type\":\"object\",\"description\":\"Structured result\",\"properties\":{\"socPercent\":{\"type\":\"number\",\"description\":\"电量百分比\",\"minimum\":0.0,\"maximum\":100.0},\"estimatedRangeKm\":{\"type\":\"number\",\"description\":\"估算续航公里\",\"minimum\":0.0},\"reserveKm\":{\"type\":\"number\",\"description\":\"至少预留续航公里\",\"minimum\":0.0},\"connector\":{\"type\":\"string\",\"description\":\"本车接口\",\"enum\":[\"gbt_dc\"],\"maxLength\":256}},\"required\":[\"socPercent\",\"estimatedRangeKm\",\"reserveKm\",\"connector\"],\"additionalProperties\":false}\nMCP annotations: {\"readOnlyHint\":true,\"destructiveHint\":false,\"idempotentHint\":true,\"openWorldHint\":false}",
+      "parameters": {
+        "type": "object",
+        "description": "Structured result",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "charging_search",
+      "description": "查找回家路线附近满足绕路、功率、排队上限且接口兼容的模拟充电站。列表是快照，按单价升序；必须逐站实时复核后才能导航。不预约、不付款。无结果时说明约束不满足，不能擅自放宽。\nMCP outputSchema: {\"type\":\"object\",\"description\":\"Structured result\",\"properties\":{\"items\":{\"type\":\"array\",\"description\":\"按模拟单价升序的候选站；空数组表示无匹配\",\"maxItems\":5,\"items\":{\"type\":\"object\",\"description\":\"Structured result\",\"properties\":{\"stationRef\":{\"type\":\"string\",\"description\":\"充电站引用\",\"maxLength\":256},\"name\":{\"type\":\"string\",\"description\":\"站点名称\",\"maxLength\":256},\"powerKw\":{\"type\":\"number\",\"description\":\"功率kW\"},\"detourMinutes\":{\"type\":\"integer\",\"description\":\"绕路分钟\",\"minimum\":0.0},\"queueMinutes\":{\"type\":\"integer\",\"description\":\"快照排队分钟\",\"minimum\":0.0},\"pricePerKwh\":{\"type\":\"number\",\"description\":\"模拟元每度\"},\"distanceKm\":{\"type\":\"number\",\"description\":\"到站距离公里\"},\"connector\":{\"type\":\"string\",\"description\":\"接口\",\"enum\":[\"gbt_dc\"],\"maxLength\":256}},\"required\":[\"stationRef\",\"name\",\"powerKw\",\"detourMinutes\",\"queueMinutes\",\"pricePerKwh\",\"distanceKm\",\"connector\"],\"additionalProperties\":false}}},\"required\":[\"items\"],\"additionalProperties\":false}\nMCP annotations: {\"readOnlyHint\":true,\"destructiveHint\":false,\"idempotentHint\":true,\"openWorldHint\":false}",
+      "parameters": {
+        "type": "object",
+        "description": "Structured result",
+        "properties": {
+          "destinationRef": {
+            "type": "string",
+            "description": "已解析的家庭地点引用",
+            "maxLength": 256
+          },
+          "maxDetourMinutes": {
+            "type": "integer",
+            "description": "用户允许的最大绕路分钟",
+            "minimum": 0.0,
+            "maximum": 30.0
+          },
+          "minPowerKw": {
+            "type": "number",
+            "description": "用户要求的最低功率kW",
+            "minimum": 0.0,
+            "maximum": 350.0
+          },
+          "maxQueueMinutes": {
+            "type": "integer",
+            "description": "用户允许的最大排队分钟",
+            "minimum": 0.0,
+            "maximum": 60.0
+          }
+        },
+        "required": [
+          "destinationRef",
+          "maxDetourMinutes",
+          "minPowerKw",
+          "maxQueueMinutes"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "charging_check_station",
+      "description": "实时复核搜索返回的候选站。STATION_OFFLINE表示该站不可用，可检查另一候选站；不重试该离线站。仅available=true、排队仍符合约束且未过validUntil时可使用destinationRef规划。不会预约或启动充电。\nMCP outputSchema: {\"type\":\"object\",\"description\":\"Structured result\",\"properties\":{\"stationRef\":{\"type\":\"string\",\"description\":\"站点引用\",\"maxLength\":256},\"destinationRef\":{\"type\":\"string\",\"description\":\"可规划的站点目的地引用\",\"maxLength\":256},\"available\":{\"type\":\"boolean\",\"description\":\"当前可用\"},\"queueMinutes\":{\"type\":\"integer\",\"description\":\"实时排队分钟\",\"minimum\":0.0},\"checkedAt\":{\"type\":\"integer\",\"description\":\"复核时间Unix毫秒\",\"minimum\":0.0},\"validUntil\":{\"type\":\"integer\",\"description\":\"复核有效期Unix毫秒\",\"minimum\":0.0}},\"required\":[\"stationRef\",\"destinationRef\",\"available\",\"queueMinutes\",\"checkedAt\",\"validUntil\"],\"additionalProperties\":false}\nMCP annotations: {\"readOnlyHint\":true,\"destructiveHint\":false,\"idempotentHint\":true,\"openWorldHint\":false}",
+      "parameters": {
+        "type": "object",
+        "description": "Structured result",
+        "properties": {
+          "stationRef": {
+            "type": "string",
+            "description": "charging_search返回的站点引用",
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "stationRef"
+        ],
         "additionalProperties": false
       }
     }
