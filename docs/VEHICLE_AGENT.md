@@ -24,7 +24,9 @@ falcon-cross-server APK 的 :server 进程
 
 | 模块 | 职责 |
 | --- | --- |
-| `falcon-capability` | 纯 Kotlin 的 13 个工具定义、输入/输出 JSON Schema、校验、错误与客户端接口 |
+| `falcon-capability` | 纯 Kotlin 的通用工具契约、Schema 校验、错误与客户端接口；包含提供方使用的13个Demo车辆工具示例 |
+| `falcon-mcp-provider` | 动态工具注册/注销、目录和版本化执行协议；不依赖Demo车辆业务 |
+| `falcon-comfort-provider` | 独立APK，运行时注册空气质量查询，验证热注册、注销与离线下架 |
 | `falcon-agent-runtime` | DeepSeek 多轮 tool_calls、远端 Schema 校验、执行策略、MCP HTTP 客户端；保留离线 Mock |
 | `falcon-mcp-adapters` | JSON ↔ 平台 Bundle 编码、Falcon 定向调用、模拟业务及 route 注册 |
 | `falcon-mcp-gateway` | 独立 Android 网关 APK、认证、MCP 服务及同签名凭据交换 |
@@ -73,8 +75,8 @@ adb shell am start -S -n com.falcon.agent.demo/.AgentActivity \
 
 ## MCP 工具与契约
 
-完整且可执行的 Schema 位于 `falcon-capability/.../Tools.kt`，通过 `tools/list` 返回。
-真实模型请求中的完整 `tools` 数组见 [deepseek-tool-definitions.json](deepseek-tool-definitions.json)，从模拟器实际请求提取，仅包含公开工具契约。
+当前Gateway在每次任务开始时聚合在线提供方注册的工具，通过 `tools/list` 返回；不再内置业务工具列表。以下13工具是车辆Demo提供方的基线能力，示例Schema位于 `falcon-capability/.../Tools.kt`。
+车辆基线真实模型请求的 `tools` 数组见 [deepseek-tool-definitions.json](deepseek-tool-definitions.json)，从模拟器实际请求提取，仅包含公开工具契约。
 所有输入均拒绝未知字段，数值不能用字符串代替，引用长度最多256字符，搜索最多5项。
 
 | 工具 | 输入 | 结果 | Falcon route / scope |
@@ -258,3 +260,8 @@ Agent、Gateway、Cross Server的`:server`为三个独立进程。DeepSeek、HTT
 当前目录扩展至13工具，新增能源查询、沿途充电站搜索和实时复核，复用导航及媒体执行。
 已在相同工具目录与system提示词下，以真实DeepSeek验证低电量换站（9轮/12调用）、续航充足直接回家（5轮/5调用）、严格搜索无结果不执行（4轮/4调用）。
 完整输入、逐轮输入输出、模拟边界、复验脚本和后续场景见 [CHARGING_AGENT_CASE.md](CHARGING_AGENT_CASE.md)，[Archify执行流程图](diagrams/charging-agent.html)可独立打开。
+
+## 动态工具注册（任务间）
+
+工具定义和执行函数已迁到提供方。Gateway通过Falcon发现并校验目录，在任务开始时固定调用绑定。独立舒适性APK的注册、注销、force-stop下架和恢复，已在相同Gateway/Agent APK及未重启Gateway的条件下使用真实DeepSeek验证。
+接入SDK、权限边界、实际请求与复验步骤见 [DYNAMIC_TOOL_REGISTRATION.md](DYNAMIC_TOOL_REGISTRATION.md)，[动态注册流程图](diagrams/dynamic-tools.html)。

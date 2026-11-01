@@ -57,7 +57,18 @@ class CrossServerApp : Application() {
             transport { binderPoolSize = 4; maxBinderPayloadSize = 256 * 1024 }
         }
         falcon.register(ICrossService::class, CrossServiceImpl())
-        if (processName.endsWith(":server")) DemoVehicleRoutes.register(this, falcon)
+        if (processName.endsWith(":server")) {
+            val prefs = getSharedPreferences("agent-demo-vehicle", MODE_PRIVATE)
+            val vehicle = com.falcon.mcp.adapters.DemoVehicle(prefs.getString("snapshot", null), persist = {
+                check(prefs.edit().putString("snapshot", it).commit())
+            })
+            val provider = com.falcon.mcp.provider.FalconMcpProvider(falcon, "com.falcon.mcp.gateway")
+            com.falcon.capability.VehicleTools.all.forEach { tool ->
+                provider.registry.registerTool(com.falcon.capability.PublishedTool(tool.descriptor(),
+                    if (tool.readOnly) "vehicle.read" else "vehicle.write",
+                    if (tool.readOnly) "read.v1" else "vehicle.demo.v1")) { args, context -> vehicle.execute(tool.name, args, context) }
+            }
+        }
 
         // Dynamic RPC uses only platform wire types. Client and server do not share
         // an interface or model class for these routes and topics.

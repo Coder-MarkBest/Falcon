@@ -11,11 +11,12 @@ data class RpcReply(val status: Int, val body: JsonObject? = null, val sessionId
 
 /** Small MCP tools server. No resources/tasks/stream notifications are advertised. */
 class McpDispatcher(
-    private val backend: ToolClient,
+    private val catalog: ToolCatalog,
     private val principal: GatewayPrincipal,
     private val clock: () -> Long = System::currentTimeMillis
 ) {
-    private data class Session(val createdAt: Long, @Volatile var initialized: Boolean = false)
+    private data class Session(val createdAt: Long, @Volatile var initialized: Boolean = false,
+        @Volatile var tools: Map<String, ToolBinding>? = null)
     private val sessions = ConcurrentHashMap<String, Session>()
     companion object { const val VERSION = "2025-11-25" }
     fun close(sessionId: String?): Boolean = sessionId != null && sessions.remove(sessionId) != null
@@ -59,14 +60,18 @@ class McpDispatcher(
                 "ping" -> obj()
                 "tools/list" -> {
                     if (params.keys.any { it != "cursor" } || "cursor" in params) return error(-32602, "No cursor is issued by this bounded catalog")
-                    obj("tools" to JsonArray(VehicleTools.all.filter { it.scope in principal.scopes }.map { it.descriptor() }))
+                    val snapshot = catalog.snapshot().filterValues { it.tool.scope in principal.scopes }
+                    session.tools = snapshot
+                    obj("tools" to JsonArray(snapshot.values.map { it.tool.descriptor }))
                 }
                 "tools/call" -> {
                     if (params.keys.any { it !in setOf("name", "arguments", "_meta") }) return error(-32602, "Unknown tool parameter")
-                    val tool = VehicleTools.byName[params.text("name")] ?: return error(-32602, "Unknown tool")
+                    val bindings = session.tools ?: catalog.snapshot().also { session.tools = it }
+                    val binding = bindings[params.text("name")] ?: return error(-32602, "Unknown tool")
+                    val tool = binding.tool
                     val arguments = params["arguments"] as? JsonObject ?: obj()
                     if (params["arguments"] != null && params["arguments"] !is JsonObject) return error(-32602, "Invalid arguments")
-                    try { tool.input.validate(arguments, "arguments") }
+                    try { ToolSchema.validate(tool.descriptor.getValue("inputSchema").jsonObject, arguments) }
                     catch (e: ToolException) { return error(-32602, e.message) }
                     if (tool.scope !in principal.scopes || ("zone" in arguments && arguments.text("zone") != principal.zone)) {
                         return RpcReply(200, success(id, toolError("FORBIDDEN")))
@@ -82,9 +87,9 @@ class McpDispatcher(
                         return error(-32602, "Writes require stable falcon/workflowId and falcon/actionId metadata")
                     }
                     try {
-                        val data = backend.call(tool.name, arguments, ToolContext(principal.userId, principal.zone,
+                        val data = binding.invoke(arguments, ToolContext(principal.userId, principal.zone,
                             workflow ?: UUID.randomUUID().toString(), action ?: UUID.randomUUID().toString()))
-                        try { tool.output.validate(data, "result") }
+                        try { ToolSchema.validate(tool.descriptor.getValue("outputSchema").jsonObject, data) }
                         catch (e: ToolException) { throw ToolException("INVALID_PROVIDER_OUTPUT", "Invalid provider output") }
                         obj("content" to JsonArray(listOf(obj("type" to str("text"), "text" to str(data.toString())))),
                             "structuredContent" to data, "isError" to bool(false))

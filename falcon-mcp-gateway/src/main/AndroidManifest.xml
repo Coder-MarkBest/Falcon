@@ -1,7 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
     <permission android:name="com.falcon.mcp.gateway.CONNECT" android:protectionLevel="signature" />
-    <queries><package android:name="com.falcon.cross.server" /></queries>
+    <queries><package android:name="com.falcon.cross.server" /><package android:name="com.falcon.comfort.provider" /></queries>
     <application android:name=".GatewayApp" android:label="Falcon MCP Gateway" android:allowBackup="false">
         <activity android:name=".GatewayActivity" android:exported="true">
             <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>

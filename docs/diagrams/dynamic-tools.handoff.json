@@ -1,0 +1,11 @@
+{
+  "diagram_type": "workflow",
+  "output": "/Users/xianxiaoli/ClaudeProjects/FastIPC/docs/diagrams/dynamic-tools.html",
+  "specification_sha256": "a25bcc5ca89bd5a757672b98197650500e38e88605aea08bea1183326088031c",
+  "artifact_sha256": "1c39a9e4e3ca3a7150915fd9afe7e9728d27a2398b677e418a0a5885a3ae07d1",
+  "validation": "9/9 showcase, 0 errors, 0 warnings",
+  "browser_evidence": "passed",
+  "visual_review": "passed",
+  "visual_review_scope": "Final light 1440x900 and dark 2048x1320 evidence inspected; balanced composition, readable labels and unobstructed cards. Automated evidence measures four desktop sizes and captures both endpoint themes.",
+  "correction_rounds": 0
+}

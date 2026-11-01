@@ -1,0 +1,9 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+  <application android:name=".ComfortApp" android:label="Falcon Comfort Provider" android:allowBackup="false">
+    <activity android:name=".ComfortActivity" android:exported="true"><intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter></activity>
+    <service android:name="com.falcon.ipc.core.IpcHostService" android:exported="false" android:foregroundServiceType="dataSync" />
+    <provider android:name="com.falcon.ipc.core.IpcRegistryProvider" android:authorities="${applicationId}.falcon.registry" android:exported="true" />
+  </application>
+</manifest>

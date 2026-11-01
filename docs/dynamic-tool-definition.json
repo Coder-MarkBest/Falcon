@@ -1,0 +1,26 @@
+{
+  "type": "function",
+  "function": {
+    "name": "comfort_air_quality",
+    "description": "读取指定座位的模拟空气质量，返回CO2、PM2.5和通风建议。用户询问空气闷不闷、二氧化碳或空气质量时调用；只查询，不调整空调或车窗。\nMCP outputSchema: {\"type\":\"object\",\"description\":\"模拟空气质量\",\"properties\":{\"zone\":{\"type\":\"string\",\"description\":\"区域\",\"maxLength\":256},\"co2Ppm\":{\"type\":\"integer\",\"description\":\"二氧化碳浓度ppm\"},\"pm25\":{\"type\":\"integer\",\"description\":\"PM2.5微克每立方米\"},\"advice\":{\"type\":\"string\",\"description\":\"通风建议\",\"maxLength\":256}},\"required\":[\"zone\",\"co2Ppm\",\"pm25\",\"advice\"],\"additionalProperties\":false}\nMCP annotations: {\"readOnlyHint\":true,\"idempotentHint\":true,\"destructiveHint\":false,\"openWorldHint\":false}",
+    "parameters": {
+      "type": "object",
+      "description": "查询当前座舱区域",
+      "properties": {
+        "zone": {
+          "type": "string",
+          "description": "授权座位",
+          "enum": [
+            "driver",
+            "front_passenger"
+          ],
+          "maxLength": 256
+        }
+      },
+      "required": [
+        "zone"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

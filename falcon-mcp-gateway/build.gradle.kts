@@ -30,7 +30,8 @@ android {
     buildTypes { getByName("debug") { signingConfig = signingConfigs.getByName("demo") } }
 }
 dependencies {
-    implementation(project(":falcon-mcp-adapters"))
+    implementation(project(":falcon-mcp-provider"))
+    testImplementation(project(":falcon-mcp-adapters"))
     implementation("org.nanohttpd:nanohttpd:2.3.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     testImplementation(project(":falcon-agent-runtime"))

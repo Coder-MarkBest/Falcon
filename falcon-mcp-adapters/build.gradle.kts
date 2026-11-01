@@ -16,7 +16,7 @@ android {
     testOptions { unitTests.isIncludeAndroidResources = true }
 }
 dependencies {
-    api(project(":falcon-core"))
+    api(project(":falcon-mcp-provider"))
     api(project(":falcon-capability"))
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     testImplementation(project(":falcon-agent-runtime"))

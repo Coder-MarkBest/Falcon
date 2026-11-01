@@ -533,3 +533,8 @@ adb install -r falcon-cross-client/build/outputs/apk/debug/falcon-cross-client-d
 > 两个 APK 使用不同的 keystore 签名（`cross-server.keystore` / `cross-client.keystore`），
 > 通过 `trustedSignatures` 互信——模拟真实多供应商证书白名单场景。
 > 签名校验默认开启（`signatureVerification = true`）。
+
+## 将应用能力动态注册为 MCP 工具
+
+需要让车载Agent在运行时发现工具的应用，可接入新增的 `falcon-mcp-provider` SDK；由应用注册说明、输入输出Schema和处理函数，Gateway在任务边界聚合目录。
+完整步骤、独立APK示例、准入配置和真实DeepSeek验收见 [DYNAMIC_TOOL_REGISTRATION.md](DYNAMIC_TOOL_REGISTRATION.md)。

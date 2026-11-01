@@ -32,6 +32,15 @@ class ToolCallingAgentTest {
         "stateVersion" to num(version), "observedAt" to num(1))
     private fun setting(temp: Number = 23) = obj("zone" to str("driver"), "targetTemperatureC" to num(temp), "expectedStateVersion" to num(1))
 
+    @Test fun `empty runtime catalog permits honest answer without model tools`() = runTest {
+        val tools = Session(emptyList()) { _, _ -> error("No tool may execute") }
+        val model = ToolCallingModel { request ->
+            assertFalse("tools" in request)
+            assertFalse("tool_choice" in request)
+            done()
+        }
+        assertEquals(0, ToolCallingAgent(model, tools).run("查询新能力", session).calls)
+    }
     @Test fun `remote catalog drives a previously unknown readonly tool and results are fed back exactly`() = runTest {
         val descriptor = obj("name" to str("cabin_read_light"), "description" to str("读取当前座舱灯光"),
             "inputSchema" to obj("type" to str("object"), "properties" to obj(), "additionalProperties" to bool(false)),

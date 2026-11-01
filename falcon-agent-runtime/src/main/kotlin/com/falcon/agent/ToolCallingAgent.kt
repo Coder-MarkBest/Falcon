@@ -25,7 +25,7 @@ class ToolCallingAgent(
         require(session.userId.isNotBlank() && session.speakerZone in setOf("driver", "front_passenger"))
         val workflow = UUID.randomUUID().toString()
         val descriptors = tools.descriptors()
-        require(descriptors.size in 1..64)
+        require(descriptors.size in 0..64)
         val catalog = descriptors.associateBy { it.text("name") }
         require(catalog.size == descriptors.size && catalog.keys.all { it.matches(Regex("[a-zA-Z0-9_-]{1,64}")) })
         val definitions = JsonArray(descriptors.map { descriptor ->
@@ -50,7 +50,9 @@ class ToolCallingAgent(
             currentCoroutineContext().ensureActive()
             val request = obj("model" to str(DeepSeekHttpTransport.MODEL), "stream" to bool(false),
                 "thinking" to obj("type" to str("disabled")), "max_tokens" to num(2048),
-                "tools" to definitions, "tool_choice" to str("auto"), "messages" to JsonArray(messages.toList()))
+                "tools" to definitions, "tool_choice" to str("auto"), "messages" to JsonArray(messages.toList())).let {
+                    if (definitions.isEmpty()) JsonObject(it - setOf("tools", "tool_choice")) else it
+                }
             trace("deepseek.request", obj("round" to num(index + 1), "body" to request))
             val choice = model.complete(request)
             trace("deepseek.response", obj("round" to num(index + 1), "choice" to choice))

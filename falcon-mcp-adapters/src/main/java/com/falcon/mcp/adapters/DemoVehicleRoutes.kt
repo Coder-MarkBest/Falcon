@@ -1,5 +1,6 @@
 package com.falcon.mcp.adapters
 
+import com.falcon.mcp.provider.FalconJsonCodec
 import android.content.Context
 import com.falcon.capability.*
 import com.falcon.ipc.core.FalconManager

@@ -382,6 +382,12 @@ class FalconManager internal constructor(
         ) { DynamicPayload.fromBundle(it) })
     }
 
+    /** Reconcile optional peer APKs installed after initialization, off the calling thread. */
+    suspend fun refreshPeerDiscovery() = withContext(threadPool.dispatcher) {
+        peerManager?.refreshPeersImmediately()
+        Unit
+    }
+
     /** Return locally visible and remotely advertised dynamic capabilities. */
     suspend fun dynamicCapabilities(): List<DynamicCapability> {
         return dynamicProviderCapabilities().map { it.capability }.distinct()

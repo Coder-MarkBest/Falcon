@@ -59,10 +59,24 @@ class PeerManager(
         }
     }
 
-    fun start() {
+    private val observedUris = ConcurrentHashMap.newKeySet<Uri>()
+    private fun observeAvailableRegistries() {
         for (uri in registryUris) {
-            context.contentResolver.registerContentObserver(uri, false, registryObserver)
+            if (!observedUris.add(uri)) continue
+            try { context.contentResolver.registerContentObserver(uri, false, registryObserver) }
+            catch (_: SecurityException) { observedUris.remove(uri) } // Optional APK may not be installed yet.
         }
+    }
+    private fun available(uri: Uri): Boolean {
+        val pkg = uri.authority?.removeSuffix(".falcon.registry") ?: return false
+        if (pkg == context.packageName) return true
+        return try {
+            val info = context.packageManager.getApplicationInfo(pkg, 0)
+            info.enabled && info.flags and android.content.pm.ApplicationInfo.FLAG_STOPPED == 0
+        } catch (_: android.content.pm.PackageManager.NameNotFoundException) { false }
+    }
+    fun start() {
+        observeAvailableRegistries()
         refreshPeers()
         FalconLogger.d("Peer", "PeerManager started across ${registryUris.size} registry URIs")
     }
@@ -76,6 +90,7 @@ class PeerManager(
             try { conn.binder.unlinkToDeath(conn.deathRecipient, 0) }
             catch (e: Exception) { FalconLogger.w("Peer", "stop cleanup: ${e.message}") }
         }
+        observedUris.clear()
         connections.clear()
         pendingUris.clear()
         reconnecting.clear()
@@ -98,30 +113,30 @@ class PeerManager(
     }
 
     internal fun refreshPeers() {
-        threadPool.submit {
-            try {
-                for (uri in registryUris) {
-                    val cursor = try {
-                        context.contentResolver.query(uri, null,
-                            "process_name != ?",
-                            arrayOf(ProcessUtils.getCurrentProcessName(context)), null)
-                    } catch (e: Exception) { continue }
-                    cursor?.use {
-                        val colIdx = it.getColumnIndex("process_name")
-                        if (colIdx < 0) return@use
-                        while (it.moveToNext()) {
-                            val name = it.getString(colIdx)
-                            if (!connections.containsKey(name) && !reconnecting.contains(name)) {
-                                connectPeer(name, uri)
-                            }
-                        }
+        threadPool.submit { refreshPeersImmediately() }
+    }
+
+    /** Blocking discovery; callers must use the IPC dispatcher. Retries missing observers too. */
+    internal fun refreshPeersImmediately() {
+        observeAvailableRegistries()
+        try {
+            for (uri in registryUris) {
+                if (!available(uri)) continue
+                val cursor = try { context.contentResolver.query(uri, null, "process_name != ?",
+                    arrayOf(ProcessUtils.getCurrentProcessName(context)), null) }
+                catch (_: Exception) { continue }
+                cursor?.use {
+                    val colIdx = it.getColumnIndex("process_name")
+                    if (colIdx < 0) return@use
+                    while (it.moveToNext()) {
+                        val name = it.getString(colIdx)
+                        if (!connections.containsKey(name) && !reconnecting.contains(name)) connectPeer(name, uri)
                     }
                 }
-            } catch (e: Exception) {
-                FalconLogger.e("Peer", "refreshPeers failed — peer discovery may be stale", e)
-                // Re-schedule a refresh attempt after a delay to recover
-                handler.postDelayed({ refreshPeers() }, 30_000L)
             }
+        } catch (e: Exception) {
+            FalconLogger.e("Peer", "refreshPeers failed — peer discovery may be stale", e)
+            handler.postDelayed({ refreshPeers() }, 30_000L)
         }
     }
 
@@ -134,6 +149,7 @@ class PeerManager(
      * the ServiceConnection / onServiceConnected lifecycle dance.
      */
     private fun connectPeer(processName: String, registryUri: Uri) {
+        if (!available(registryUri)) return
         // Only one connect attempt per process at a time — prevents refreshPeers and a
         // scheduled reconnect from both connecting the same peer (which would orphan a
         // PeerConnection whose linkToDeath later kills the live connection).

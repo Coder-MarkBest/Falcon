@@ -1,0 +1,185 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "动态工具注册：任务开始时发现与执行",
+    "locale": "zh-CN",
+    "quality_profile": "showcase"
+  },
+  "lanes": [
+    {
+      "id": "agent",
+      "label": "Agent 与 DeepSeek"
+    },
+    {
+      "id": "gateway",
+      "label": "MCP Gateway"
+    },
+    {
+      "id": "provider",
+      "label": "独立工具提供方"
+    }
+  ],
+  "mainPath": [
+    "register",
+    "discover",
+    "admit",
+    "catalog",
+    "choose",
+    "invoke",
+    "execute",
+    "result",
+    "answer"
+  ],
+  "nodes": [
+    {
+      "id": "register",
+      "lane": "provider",
+      "col": 0,
+      "type": "backend",
+      "label": "应用注册工具",
+      "sublabel": "定义、Schema 与处理函数",
+      "width": 170
+    },
+    {
+      "id": "discover",
+      "lane": "gateway",
+      "col": 1,
+      "type": "messagebus",
+      "label": "发现在线应用",
+      "sublabel": "Falcon 保留包名与进程",
+      "width": 170
+    },
+    {
+      "id": "admit",
+      "lane": "gateway",
+      "col": 2,
+      "type": "security",
+      "label": "校验与准入",
+      "sublabel": "权限、命名与契约版本",
+      "width": 170
+    },
+    {
+      "id": "catalog",
+      "lane": "agent",
+      "col": 2,
+      "type": "database",
+      "label": "本次任务工具目录",
+      "sublabel": "MCP tools/list",
+      "width": 170
+    },
+    {
+      "id": "choose",
+      "lane": "agent",
+      "col": 3,
+      "type": "cloud",
+      "label": "DeepSeek 自主选择",
+      "sublabel": "tools + messages",
+      "width": 170
+    },
+    {
+      "id": "invoke",
+      "lane": "gateway",
+      "col": 4,
+      "type": "security",
+      "label": "绑定提供方执行",
+      "sublabel": "固定目标与契约哈希",
+      "width": 170
+    },
+    {
+      "id": "execute",
+      "lane": "provider",
+      "col": 4,
+      "type": "backend",
+      "label": "执行注册函数",
+      "sublabel": "再次校验目录版本与参数",
+      "width": 170
+    },
+    {
+      "id": "result",
+      "lane": "provider",
+      "col": 5,
+      "type": "database",
+      "label": "工具返回结果",
+      "sublabel": "CO2 与 PM2.5 模拟读数",
+      "width": 170
+    },
+    {
+      "id": "answer",
+      "lane": "agent",
+      "col": 5,
+      "type": "frontend",
+      "label": "模型回答用户",
+      "sublabel": "完整工具结果回传",
+      "width": 170
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge0",
+      "from": "register",
+      "to": "discover",
+      "label": "catalog/get"
+    },
+    {
+      "id": "edge1",
+      "from": "discover",
+      "to": "admit",
+      "label": "工具描述"
+    },
+    {
+      "id": "edge2",
+      "from": "admit",
+      "to": "catalog",
+      "label": "任务快照"
+    },
+    {
+      "id": "edge3",
+      "from": "catalog",
+      "to": "choose",
+      "label": "完整 Schema"
+    },
+    {
+      "id": "edge4",
+      "from": "choose",
+      "to": "invoke",
+      "label": "tool_calls"
+    },
+    {
+      "id": "edge5",
+      "from": "invoke",
+      "to": "execute",
+      "label": "Falcon tools/invoke"
+    },
+    {
+      "id": "edge6",
+      "from": "execute",
+      "to": "result",
+      "label": "结构化数据"
+    },
+    {
+      "id": "edge7",
+      "from": "result",
+      "to": "answer",
+      "label": "role=tool → 下一轮"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "任务间动态",
+      "items": [
+        "每次 tools/list 刷新在线目录并固定本任务绑定",
+        "注销或离线后，下次任务不再发布该工具"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "无需更新宿主业务代码",
+      "items": [
+        "工具说明与 Schema 来自独立 APK 的运行时注册",
+        "提供方身份、授权范围和执行策略由 Gateway 准入控制"
+      ]
+    }
+  ]
+}

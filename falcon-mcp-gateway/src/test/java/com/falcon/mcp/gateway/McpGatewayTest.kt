@@ -10,6 +10,10 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class McpGatewayTest {
+    private fun dispatcher(backend: ToolClient, principal: GatewayPrincipal): McpDispatcher = McpDispatcher(ToolCatalog {
+        VehicleTools.all.associate { definition -> definition.name to ToolBinding(PublishedTool(definition.descriptor(), definition.scope,
+            if (definition.readOnly) ToolProtocol.READ else ToolProtocol.VEHICLE)) { args, context -> backend.call(definition.name, args, context) } }
+    }, principal)
     private val principal = GatewayPrincipal("demo_driver", "driver", VehicleTools.all.map { it.scope }.toSet())
     private fun request(method: String, params: JsonObject = obj(), id: Long = 1) =
         obj("jsonrpc" to str("2.0"), "id" to num(id), "method" to str(method), "params" to params)
@@ -24,7 +28,7 @@ class McpGatewayTest {
         return session
     }
     @Test fun `initialization gates tools and missing session is handled`() = runTest {
-        val dispatcher = McpDispatcher(backend(), principal)
+        val dispatcher = dispatcher(backend(), principal)
         assertEquals(404, dispatcher.dispatch(request("tools/list"), null, McpDispatcher.VERSION).status)
         val session = requireNotNull(dispatcher.dispatch(init, null, null).sessionId)
         assertNotNull(dispatcher.dispatch(request("tools/list"), session, McpDispatcher.VERSION).body?.get("error"))
@@ -32,7 +36,7 @@ class McpGatewayTest {
     }
     @Test fun `invalid arguments and missing stable write metadata never invoke provider`() = runTest {
         var calls = 0
-        val dispatcher = McpDispatcher(object : ToolClient {
+        val dispatcher = dispatcher(object : ToolClient {
             override suspend fun call(name: String, arguments: JsonObject, context: ToolContext): JsonObject { calls++; return obj() }
         }, principal)
         val session = connect(dispatcher)
@@ -44,7 +48,7 @@ class McpGatewayTest {
         assertEquals(0, calls)
     }
     @Test fun `zone restrictions and scopes are enforced by gateway`() = runTest {
-        val dispatcher = McpDispatcher(backend(), principal.copy(scopes = setOf("climate.read")))
+        val dispatcher = dispatcher(backend(), principal.copy(scopes = setOf("climate.read")))
         val session = connect(dispatcher)
         val result = dispatcher.dispatch(request("tools/call", obj("name" to str("climate_get_state"),
             "arguments" to obj("zone" to str("front_passenger")))), session, McpDispatcher.VERSION)
@@ -54,7 +58,7 @@ class McpGatewayTest {
     }
     @Test fun `tool notifications do not execute actions`() = runTest {
         var calls = 0
-        val dispatcher = McpDispatcher(object : ToolClient {
+        val dispatcher = dispatcher(object : ToolClient {
             override suspend fun call(name: String, arguments: JsonObject, context: ToolContext): JsonObject { calls++; return obj() }
         }, principal)
         val session = connect(dispatcher)
@@ -63,7 +67,7 @@ class McpGatewayTest {
         assertEquals(0, calls)
     }
     @Test fun `real HTTP MCP client completes three-branch journey`() = runBlocking {
-        val server = McpHttpServer(McpDispatcher(backend(), principal), "test-token", 0)
+        val server = McpHttpServer(dispatcher(backend(), principal), "test-token", 0)
         server.start(3000, true)
         try {
             val client = HttpMcpToolClient("http://127.0.0.1:${server.listeningPort}/mcp", "test-token")
@@ -74,7 +78,7 @@ class McpGatewayTest {
         } finally { server.stop() }
     }
     @Test fun `HTTP rejects invalid bearer origin oversized body and GET streaming`() {
-        val server = McpHttpServer(McpDispatcher(backend(), principal), "test-token", 0)
+        val server = McpHttpServer(dispatcher(backend(), principal), "test-token", 0)
         server.start(3000, true)
         fun http(method: String, token: String = "test-token", origin: String? = null, size: Int = 2): Int {
             return java.net.Socket("127.0.0.1", server.listeningPort).use { socket ->
@@ -98,7 +102,7 @@ class McpGatewayTest {
         } finally { server.stop() }
     }
     @Test fun `missing home error directs user to saved place settings without asking for an address`() = runTest {
-        val dispatcher = McpDispatcher(object : ToolClient {
+        val dispatcher = dispatcher(object : ToolClient {
             override suspend fun call(name: String, arguments: JsonObject, context: ToolContext): JsonObject {
                 throw ToolException("HOME_NOT_SET", "missing")
             }

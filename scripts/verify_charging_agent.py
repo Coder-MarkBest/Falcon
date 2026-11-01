@@ -70,6 +70,11 @@ def trace():
 
 catalog_hash=None
 system_hash=None
+VEHICLE_NAMES = {
+    'profile_resolve_place', 'navigation_plan_route', 'navigation_start', 'navigation_get_state',
+    'climate_get_state', 'climate_set_temperature', 'media_search', 'media_play', 'media_get_state',
+    'energy_get_state', 'charging_search', 'charging_check_station', 'operation_get'
+}
 
 def run_case(label, utterance, allowed, expected_writes):
     global catalog_hash,system_hash
@@ -110,11 +115,13 @@ def run_case(label, utterance, allowed, expected_writes):
     check(final['data'].get('model')=='DeepSeek','not real DeepSeek')
     for r in reqs:
         body=r['data']['body']
-        dh=hashlib.sha256(json.dumps(body['tools'],ensure_ascii=False,sort_keys=True).encode()).hexdigest()
+        vehicle_definitions=sorted((t for t in body['tools'] if t['function']['name'] in VEHICLE_NAMES), key=lambda t: t['function']['name'])
+        check(len(vehicle_definitions)==len(VEHICLE_NAMES),'vehicle baseline catalog incomplete')
+        dh=hashlib.sha256(json.dumps(vehicle_definitions,ensure_ascii=False,sort_keys=True).encode()).hexdigest()
         sh=hashlib.sha256(body['messages'][0]['content'].encode()).hexdigest()
         if catalog_hash is None: catalog_hash=dh;system_hash=sh
         check(dh==catalog_hash and sh==system_hash,'tool definitions or prompt changed across cases')
-        check(len(body['tools'])==13 and body['tool_choice']=='auto','catalog was filtered or tool choice was forced')
+        check(13 <= len(body['tools']) <= 64 and body['tool_choice']=='auto','catalog was filtered or tool choice was forced')
         for message in body['messages']:
             if message['role']=='tool': check(json.loads(message['content'])==feedback[message['tool_call_id']], 'tool feedback mismatch')
     last_messages=reqs[-1]['data']['body']['messages']

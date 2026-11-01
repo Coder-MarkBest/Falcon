@@ -3,11 +3,9 @@ package com.falcon.mcp.gateway
 import android.app.Application
 import android.content.Context
 import android.util.Base64
-import com.falcon.capability.VehicleTools
+import com.falcon.capability.*
 import com.falcon.ipc.Falcon
-import com.falcon.ipc.dynamic.DynamicTarget
 import com.falcon.ipc.util.FalconLogger
-import com.falcon.mcp.adapters.FalconToolClient
 import java.security.SecureRandom
 
 class GatewayApp : Application() {
@@ -17,7 +15,7 @@ class GatewayApp : Application() {
     override fun onCreate() {
         super.onCreate()
         val falcon = Falcon.init(this) {
-            peerPackages("com.falcon.cross.server")
+            peerPackages("com.falcon.cross.server", "com.falcon.comfort.provider")
             security {
                 trustedSignatures = setOf("223b61dec24a63fdc836a01523ce6fb3bed67b32350fdd03c9271a7c4b5d58b1")
                 rateLimitPerSecond = 50; maxConcurrentCalls = 8
@@ -25,9 +23,12 @@ class GatewayApp : Application() {
             timeout { connectMs = 5000 }
             transport { invokeTimeoutMs = 8000 }
         }
-        val principal = GatewayPrincipal("demo_driver", "driver", VehicleTools.all.map { it.scope }.toSet())
-        val dispatcher = McpDispatcher(FalconToolClient(falcon,
-            DynamicTarget("com.falcon.cross.server", "com.falcon.cross.server:server")), principal)
+        val grants = mapOf(
+            "com.falcon.cross.server" to ProviderGrant("", setOf("vehicle.read", "vehicle.write"), setOf(ToolProtocol.READ, ToolProtocol.VEHICLE)),
+            "com.falcon.comfort.provider" to ProviderGrant("comfort_", setOf("comfort.read"), setOf(ToolProtocol.READ))
+        )
+        val principal = GatewayPrincipal("demo_driver", "driver", grants.values.flatMap { it.scopes }.toSet())
+        val dispatcher = McpDispatcher(DiscoveredToolCatalog(falcon, grants), principal)
         try {
             server = McpHttpServer(dispatcher, token(this)).also { it.start(5000, true) }
         } catch (e: Exception) {
